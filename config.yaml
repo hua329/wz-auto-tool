@@ -1,0 +1,338 @@
+adb_path: C:\Program Files\Tencent\GameAssist\Application\6.10.5910.509\adb.exe
+device: emulator-5554
+display: "3"
+interval: 1.2
+
+# These coordinates are normalized to the 1280x720 ADB game display.
+# Real clicking is disabled unless wz_auto.py is run with --enable-clicks.
+bootstrap_steps:
+  - name: 01_home_click_battle
+    x: 0.406
+    y: 0.750
+    delay_after: 1.8
+  - name: 02_battle_click_5v5_arena
+    x: 0.313
+    y: 0.563
+    delay_after: 1.6
+  - name: 03_arena_click_ai_mode
+    x: 0.617
+    y: 0.838
+    delay_after: 1.4
+  - name: 04_ai_click_start_practice
+    x: 0.828
+    y: 0.792
+    delay_after: 2.0
+
+states:
+  # Add these templates with `python wz_auto.py learn 01_home` etc. when those
+  # screens are visible, then set enabled: true if you want fully recognized
+  # navigation from the home screen.
+  - name: 01_home
+    enabled: true
+    mode: reference
+    template: templates/01_home.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.406
+      y: 0.750
+      coord: norm
+    delay_after: 1.8
+
+  - name: 02_battle_5v5
+    enabled: true
+    mode: reference
+    template: templates/02_battle_5v5.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.313
+      y: 0.563
+      coord: norm
+    delay_after: 1.6
+
+  - name: 03_arena_ai
+    enabled: true
+    mode: reference
+    template: templates/03_arena_ai.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.617
+      y: 0.838
+      coord: norm
+    delay_after: 1.4
+
+  - name: 04_ai_start_practice
+    enabled: true
+    mode: reference
+    template: templates/04_ai_start_practice.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.828
+      y: 0.792
+      coord: norm
+    delay_after: 2.0
+
+  - name: 05_room_start_match
+    enabled: true
+    mode: reference
+    template: templates/05_room.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.605
+      y: 0.921
+      coord: norm
+    delay_after: 3.0
+
+  - name: 06_match_success_confirm
+    enabled: true
+    mode: heuristic
+    heuristic: gold_button
+    region: [0.36, 0.72, 0.64, 0.89]
+    template: templates/06_match_success.png
+    threshold: 0.62
+    action:
+      type: tap
+      x: 0.50
+      y: 0.815
+      coord: norm
+    delay_after: 2.0
+
+  - name: 07_hero_select_open_list
+    enabled: true
+    mode: reference
+    template: templates/07_hero_select_unpicked.png
+    current_crop: [0.00, 0.00, 0.22, 0.72]
+    reference_crop: [0.00, 0.086, 0.22, 0.744]
+    threshold: 0.90
+    action:
+      type: tap
+      x: 0.207
+      y: 0.460
+      coord: norm
+      followup_taps:
+        - x: 0.431
+          y: 0.041
+          coord: norm
+          delay: 0.8
+        - x: 0.516
+          y: 0.355
+          coord: norm
+          delay: 0.8
+        - x: 0.922
+          y: 0.924
+          coord: norm
+          delay: 0.8
+    delay_after: 0.8
+
+  - name: 07_hero_list_choose_mid_tab
+    enabled: true
+    mode: reference
+    template: templates/07_hero_list_all.png
+    current_crop: [0, 0.10, 0.86, 0.50]
+    reference_crop: [0, 0.18, 0.86, 0.56]
+    threshold: 0.86
+    action:
+      type: tap
+      x: 0.431
+      y: 0.041
+      coord: norm
+      followup_taps:
+        - x: 0.516
+          y: 0.355
+          coord: norm
+          delay: 0.8
+        - x: 0.922
+          y: 0.924
+          coord: norm
+          delay: 0.8
+    delay_after: 0.8
+
+  - name: 07_hero_mid_pick_milaidi
+    enabled: true
+    mode: reference
+    template: templates/07_hero_list_mid.png
+    current_crop: [0.36, 0.10, 0.78, 0.48]
+    reference_crop: [0.36, 0.18, 0.78, 0.52]
+    threshold: 0.86
+    action:
+      type: tap
+      x: 0.516
+      y: 0.355
+      coord: norm
+      followup_taps:
+        - x: 0.516
+          y: 0.355
+          coord: norm
+          delay: 0.2
+        - x: 0.922
+          y: 0.924
+          coord: norm
+          delay: 0.8
+    delay_after: 1.0
+
+  - name: 07_hero_select_confirm_gold
+    enabled: true
+    mode: heuristic
+    heuristic: gold_button
+    region: [0.83, 0.86, 0.99, 0.99]
+    threshold: 0.50
+    action:
+      type: tap
+      x: 0.922
+      y: 0.924
+      coord: norm
+    delay_after: 4.0
+
+  - name: 07_hero_select_confirm
+    enabled: false
+    mode: reference
+    template: templates/07_hero_select.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.922
+      y: 0.924
+      coord: norm
+    delay_after: 4.0
+
+  - name: 08_loading
+    enabled: true
+    mode: reference
+    template: templates/08_loading.png
+    threshold: 0.80
+    action:
+      type: none
+    delay_after: 5.0
+
+  - name: 09_in_game_wait
+    mode: reference
+    template: templates/09_in_game.png
+    current_crop: [0, 0, 0.23, 0.34]
+    reference_crop: [0, 0.086, 0.23, 0.40]
+    threshold: 0.80
+    action:
+      type: none
+    delay_after: 8.0
+
+  - name: 10_victory_tap_continue
+    enabled: true
+    mode: heuristic
+    heuristic: victory_screen
+    region: [0.26, 0.08, 0.78, 0.42]
+    threshold: 0.55
+    action:
+      type: tap
+      x: 0.50
+      y: 0.76
+      coord: norm
+    delay_after: 2.5
+
+  - name: 10_defeat_tap_continue
+    mode: reference
+    template: templates/10_defeat.png
+    current_crop: [0.12, 0.12, 0.88, 0.70]
+    reference_crop: [0.12, 0.18, 0.88, 0.72]
+    threshold: 0.84
+    action:
+      type: tap
+      x: 0.50
+      y: 0.76
+      coord: norm
+    delay_after: 2.5
+
+  - name: 11_victory_mvp_continue
+    enabled: true
+    mode: reference
+    template: templates/11_victory_mvp_continue.png
+    current_crop: [0.30, 0.42, 0.70, 0.92]
+    reference_crop: [0.30, 0.48, 0.70, 0.93]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.0
+
+  - name: 11_victory_performance_continue
+    enabled: true
+    mode: reference
+    template: templates/11_victory_performance_continue.png
+    current_crop: [0.38, 0.36, 0.72, 0.92]
+    reference_crop: [0.38, 0.42, 0.72, 0.93]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.0
+
+  - name: 11_mvp_continue
+    mode: reference
+    template: templates/11_mvp_continue.png
+    current_crop: [0.28, 0.50, 0.72, 0.92]
+    reference_crop: [0.28, 0.54, 0.72, 0.93]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.0
+
+  - name: 11_performance_continue
+    mode: reference
+    template: templates/11_performance_continue.png
+    current_crop: [0.25, 0.45, 0.75, 0.93]
+    reference_crop: [0.25, 0.45, 0.75, 0.93]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.0
+
+  - name: 12_victory_scoreboard_back_room
+    enabled: true
+    mode: reference
+    template: templates/12_victory_scoreboard.png
+    current_crop: [0.00, 0.08, 1.00, 0.82]
+    reference_crop: [0.00, 0.14, 1.00, 0.84]
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.578
+      y: 0.907
+      coord: norm
+    delay_after: 1.8
+
+  - name: 12_scoreboard_continue
+    mode: reference
+    template: templates/12_scoreboard.png
+    current_crop: [0.00, 0.08, 1.00, 0.82]
+    reference_crop: [0.00, 0.14, 1.00, 0.84]
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.578
+      y: 0.907
+      coord: norm
+    delay_after: 1.8
+
+  - name: 13_back_room
+    enabled: false
+    mode: reference
+    template: templates/13_back_room.png
+    threshold: 0.82
+    action:
+      type: tap
+      x: 0.58
+      y: 0.91
+      coord: norm
+    delay_after: 2.0
