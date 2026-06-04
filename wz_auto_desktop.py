@@ -18,7 +18,7 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.1"
+APP_VERSION = "0.0.2"
 
 
 class LogCapture(contextlib.AbstractContextManager):
@@ -43,7 +43,7 @@ class LogCapture(contextlib.AbstractContextManager):
 class AutoDesktopApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"王者荣耀自动识别点击工具 v{APP_VERSION}")
+        self.title(f"王者荣耀自动练级工具 v{APP_VERSION}")
         self.geometry("1100x760")
         self.minsize(980, 680)
 
@@ -54,7 +54,6 @@ class AutoDesktopApp(tk.Tk):
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.preview_image = None
 
-        self.enable_clicks = tk.BooleanVar(value=False)
         self.interval = tk.DoubleVar(value=float(self.cfg.get("interval", 1.2)))
         self.status = tk.StringVar(value="就绪")
 
@@ -82,7 +81,6 @@ class AutoDesktopApp(tk.Tk):
         self.device_label = ttk.Label(top, text="设备：检查中")
         self.device_label.pack(side=tk.LEFT)
 
-        ttk.Checkbutton(top, text="真实点击", variable=self.enable_clicks).pack(side=tk.LEFT, padx=(20, 0))
         ttk.Label(top, text="间隔秒").pack(side=tk.LEFT, padx=(20, 4))
         ttk.Spinbox(top, from_=0.5, to=30, increment=0.5, textvariable=self.interval, width=6).pack(side=tk.LEFT)
 
@@ -96,14 +94,6 @@ class AutoDesktopApp(tk.Tk):
         ttk.Button(buttons, text="自动检测", command=self.auto_config).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="开始循环", command=self.start_loop).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="停止", command=self.stop_loop).pack(side=tk.LEFT, padx=6)
-
-        learn_box = ttk.Frame(root)
-        learn_box.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(learn_box, text="学习当前屏幕为模板：").pack(side=tk.LEFT)
-        self.learn_name = ttk.Entry(learn_box, width=26)
-        self.learn_name.insert(0, "06_match_success")
-        self.learn_name.pack(side=tk.LEFT, padx=6)
-        ttk.Button(learn_box, text="保存模板", command=self.learn_current).pack(side=tk.LEFT)
 
         middle = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
         middle.pack(fill=tk.BOTH, expand=True)
@@ -121,13 +111,6 @@ class AutoDesktopApp(tk.Tk):
         self.log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         middle.add(log_frame, weight=2)
-
-        bottom = ttk.Frame(root)
-        bottom.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(
-            bottom,
-            text="说明：默认不真实点击。勾选“真实点击”后才会通过 ADB 点击 display 2；游戏中状态只等待，不操作角色。",
-        ).pack(side=tk.LEFT)
 
     def log_line(self, text: str) -> None:
         self.events.put(("log", text))
@@ -227,14 +210,14 @@ class AutoDesktopApp(tk.Tk):
     def start_loop(self) -> None:
         def task():
             self.reload_config()
-            self.log_line(f"[loop] start enable_clicks={self.enable_clicks.get()}")
+            self.log_line("[loop] start enable_clicks=True")
             while not self.stop_event.is_set():
                 img = self.adb.capture()
                 self.events.put(("preview", img))
                 result = wz_auto.find_state(img, self.cfg.get("states", []), verbose=False)
                 if result:
                     with LogCapture(self.log_line):
-                        wz_auto.perform_action(self.adb, img, result, dry_run=not self.enable_clicks.get())
+                        wz_auto.perform_action(self.adb, img, result, dry_run=False)
                     time.sleep(result.delay_after)
                 else:
                     self.log_line("[wait] no configured state matched")
@@ -246,26 +229,6 @@ class AutoDesktopApp(tk.Tk):
     def stop_loop(self) -> None:
         self.stop_event.set()
         self.log_line("[stop] stop requested")
-
-    def learn_current(self) -> None:
-        name = self.learn_name.get().strip()
-        if not name:
-            messagebox.showwarning("缺少名称", "请输入模板名称。")
-            return
-
-        def task():
-            self.reload_config()
-            img = self.adb.capture()
-            safe_name = "".join(ch for ch in name if ch.isalnum() or ch in ("_", "-", ".")).strip("._")
-            if not safe_name:
-                raise ValueError("模板名称无效")
-            out = APP_DIR / "templates" / f"{safe_name}.png"
-            img.save(out)
-            self.events.put(("preview", img))
-            self.log_line(f"[learn] saved {out}")
-            self.log_line(f"[learn] 在 config.yaml 中把对应规则 template 指向 templates/{safe_name}.png")
-
-        self._run_bg("保存模板", task)
 
 
 if __name__ == "__main__":

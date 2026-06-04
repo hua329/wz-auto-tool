@@ -465,27 +465,6 @@ def test_capture(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     print(f"[ok] saved {path} size={img.size[0]}x{img.size[1]}")
 
 
-def learn(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
-    adb_path = resolve_adb_path(args.adb or cfg.get("adb_path"))
-    device = args.device or cfg.get("device") or "emulator-5554"
-    display = str(args.display or cfg.get("display") or "2")
-    img = AdbClient(adb_path, device, display).capture()
-    safe_name = "".join(ch for ch in args.name if ch.isalnum() or ch in ("_", "-", ".")).strip("._")
-    if not safe_name:
-        raise ValueError("invalid template name")
-    out = BASE_DIR / "templates" / f"{safe_name}.png"
-    out.parent.mkdir(exist_ok=True)
-    img.save(out)
-    print(f"[ok] learned template: {out}")
-    print("Config snippet:")
-    print(f"""  - name: {safe_name}
-    mode: reference
-    template: templates/{safe_name}.png
-    threshold: 0.82
-    action:
-      type: none""")
-
-
 def bootstrap_clicks(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     adb_path = resolve_adb_path(args.adb or cfg.get("adb_path"))
     device = args.device or cfg.get("device") or "emulator-5554"
@@ -538,9 +517,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(sub.add_parser("devices"), defaults=False)
     add_common(sub.add_parser("auto-config"), defaults=False)
     add_common(sub.add_parser("test-capture"), defaults=False)
-    learn_p = sub.add_parser("learn")
-    add_common(learn_p, defaults=False)
-    learn_p.add_argument("name")
     add_common(sub.add_parser("bootstrap-clicks"), defaults=False)
     add_common(sub.add_parser("run"), defaults=False)
     return p
@@ -556,8 +532,6 @@ def main() -> int:
         auto_config(args, cfg)
     elif args.cmd == "test-capture":
         test_capture(args, cfg)
-    elif args.cmd == "learn":
-        learn(args, cfg)
     elif args.cmd == "bootstrap-clicks":
         bootstrap_clicks(args, cfg)
     else:

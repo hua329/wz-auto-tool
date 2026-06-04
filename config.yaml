@@ -1,10 +1,10 @@
-adb_path: C:\Program Files\Tencent\GameAssist\Application\6.10.5910.509\adb.exe
-device: emulator-5554
-display: "3"
+﻿adb_path: ""
+device: ""
+display: "2"
 interval: 1.2
 
 # These coordinates are normalized to the 1280x720 ADB game display.
-# Real clicking is disabled unless wz_auto.py is run with --enable-clicks.
+# The desktop app clicks by default. CLI dry-run remains available unless --enable-clicks is used.
 bootstrap_steps:
   - name: 01_home_click_battle
     x: 0.406
@@ -24,9 +24,18 @@ bootstrap_steps:
     delay_after: 2.0
 
 states:
-  # Add these templates with `python wz_auto.py learn 01_home` etc. when those
-  # screens are visible, then set enabled: true if you want fully recognized
-  # navigation from the home screen.
+  # Templates are loaded from templates.dat in the desktop release.
+  - name: 00_in_game_minimap_guard
+    enabled: true
+    mode: reference
+    template: templates/09_in_game.png
+    current_crop: [0, 0, 0.23, 0.34]
+    reference_crop: [0, 0.086, 0.23, 0.40]
+    threshold: 0.82
+    action:
+      type: none
+    delay_after: 8.0
+
   - name: 01_home
     enabled: true
     mode: reference
@@ -336,3 +345,4 @@ states:
       y: 0.91
       coord: norm
     delay_after: 2.0
+

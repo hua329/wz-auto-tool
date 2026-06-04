@@ -1,7 +1,8 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-set APP_NAME=wz_auto_tool
+set APP_NAME=王者荣耀自动练级工具
 
 python -m PyInstaller --version >nul 2>nul
 if errorlevel 1 (
