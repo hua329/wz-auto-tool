@@ -18,7 +18,7 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.5"
+APP_VERSION = "0.0.6"
 
 
 class LogCapture(contextlib.AbstractContextManager):

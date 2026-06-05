@@ -206,6 +206,33 @@ states:
       type: none
     delay_after: 8.0
 
+  - name: 12_victory_scoreboard_back_room
+    enabled: true
+    mode: reference
+    template: templates/12_victory_scoreboard.png
+    current_crop: [0.00, 0.08, 1.00, 0.82]
+    reference_crop: [0.00, 0.14, 1.00, 0.84]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.578
+      y: 0.907
+      coord: norm
+    delay_after: 1.8
+
+  - name: 12_scoreboard_continue
+    mode: reference
+    template: templates/12_scoreboard.png
+    current_crop: [0.00, 0.08, 1.00, 0.82]
+    reference_crop: [0.00, 0.14, 1.00, 0.84]
+    threshold: 0.80
+    action:
+      type: tap
+      x: 0.578
+      y: 0.907
+      coord: norm
+    delay_after: 1.8
+
   - name: 10_victory_tap_continue
     enabled: true
     mode: heuristic
@@ -312,33 +339,6 @@ states:
       coord: norm
     delay_after: 2.0
 
-  - name: 12_victory_scoreboard_back_room
-    enabled: true
-    mode: reference
-    template: templates/12_victory_scoreboard.png
-    current_crop: [0.00, 0.08, 1.00, 0.82]
-    reference_crop: [0.00, 0.14, 1.00, 0.84]
-    threshold: 0.80
-    action:
-      type: tap
-      x: 0.578
-      y: 0.907
-      coord: norm
-    delay_after: 1.8
-
-  - name: 12_scoreboard_continue
-    mode: reference
-    template: templates/12_scoreboard.png
-    current_crop: [0.00, 0.08, 1.00, 0.82]
-    reference_crop: [0.00, 0.14, 1.00, 0.84]
-    threshold: 0.80
-    action:
-      type: tap
-      x: 0.578
-      y: 0.907
-      coord: norm
-    delay_after: 1.8
-
   - name: 13_back_room
     enabled: false
     mode: reference
@@ -350,6 +350,7 @@ states:
       y: 0.91
       coord: norm
     delay_after: 2.0
+
 
 
 

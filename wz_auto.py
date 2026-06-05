@@ -379,6 +379,16 @@ def heuristic_score(img: Image.Image, rule: dict[str, Any]) -> float:
         contrast = float(np.percentile(r - b, 90)) / 180.0
         return max(0.0, min(1.0, max(warm_ratio * 18.0, contrast)))
     if kind == "victory_badge":
+        button_roi = crop_box(img, rule.get("reject_button_region", [0.25, 0.78, 0.62, 0.98]))
+        button_arr = np.asarray(button_roi, dtype=np.float32)
+        br = button_arr[:, :, 0]
+        bg = button_arr[:, :, 1]
+        bb = button_arr[:, :, 2]
+        bottom_gold = (br > 135) & (bg > 95) & (br > bb + 25) & (bg > bb + 8)
+        bottom_blue = (bb > 120) & (bg > 85) & (bb > br + 20)
+        if float(bottom_gold.mean()) > 0.035 or float(bottom_blue.mean()) > 0.06:
+            return 0.0
+
         roi = crop_box(img, rule.get("region", [0.10, 0.08, 0.90, 0.72]))
         arr = np.asarray(roi, dtype=np.float32)
         r = arr[:, :, 0]
