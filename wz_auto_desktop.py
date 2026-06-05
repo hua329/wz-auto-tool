@@ -18,7 +18,7 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.2"
+APP_VERSION = "0.0.3"
 
 
 class LogCapture(contextlib.AbstractContextManager):
@@ -67,7 +67,7 @@ class AutoDesktopApp(tk.Tk):
 
     def _new_adb(self) -> wz_auto.AdbClient:
         adb_path = wz_auto.resolve_adb_path(self.cfg.get("adb_path"))
-        device = self.cfg.get("device") or "emulator-5554"
+        device = self.cfg.get("device") or "127.0.0.1:5555"
         display = str(self.cfg.get("display") or "2")
         return wz_auto.AdbClient(adb_path, device, display)
 
@@ -165,18 +165,17 @@ class AutoDesktopApp(tk.Tk):
         def task():
             self.reload_config()
             adb_path = wz_auto.resolve_adb_path(self.cfg.get("adb_path"))
-            proc = wz_auto.subprocess.run(
-                [str(adb_path), "devices", "-l"],
-                text=True,
-                capture_output=True,
-                timeout=10,
-                **wz_auto.HIDDEN_SUBPROCESS_KWARGS,
-            )
+            devices = wz_auto.ensure_connected_devices(adb_path, self.cfg.get("device"))
+            proc = wz_auto.adb_command(adb_path, "devices", "-l", timeout=10)
             output = proc.stdout.strip() or proc.stderr.strip()
-            self.events.put(("log", output))
-            device = self.cfg.get("device") or "emulator-5554"
-            ok = re.search(rf"^{re.escape(str(device))}\s+device\b", output, re.MULTILINE) is not None
-            text = f"设备：{device} 已连接" if ok else "设备：未确认连接"
+            self.events.put(("log", output or "List of devices attached"))
+            configured = str(self.cfg.get("device") or "")
+            device = configured if configured in devices else (devices[0] if devices else configured)
+            if device and device != configured:
+                wz_auto.update_config_file(CONFIG_PATH, {"device": device})
+                self.reload_config()
+                self.log_line(f"[auto] device={device} 已写入 config.yaml")
+            text = f"设备：{device} 已连接" if device in devices else "设备：未确认连接"
             self.events.put(("device", text))
             self.device_label.after(0, lambda: self.device_label.configure(text=text))
 
@@ -210,6 +209,22 @@ class AutoDesktopApp(tk.Tk):
     def start_loop(self) -> None:
         def task():
             self.reload_config()
+            try:
+                result = wz_auto.auto_detect_config(self.cfg)
+                wz_auto.update_config_file(
+                    CONFIG_PATH,
+                    {
+                        "adb_path": result["adb_path"],
+                        "device": result["device"],
+                        "display": result["display"],
+                    },
+                )
+                self.reload_config()
+                self.events.put(("preview", result["image"]))
+                self.device_label.after(0, lambda: self.device_label.configure(text=f"设备：{result['device']} 已连接"))
+                self.log_line(f"[auto] device={result['device']} display={result['display']}")
+            except Exception as exc:
+                self.log_line(f"[auto warning] {exc}")
             self.log_line("[loop] start enable_clicks=True")
             while not self.stop_event.is_set():
                 img = self.adb.capture()

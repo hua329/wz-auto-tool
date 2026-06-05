@@ -32,6 +32,19 @@ HIDDEN_SUBPROCESS_KWARGS = (
     if os.name == "nt"
     else {}
 )
+COMMON_ADB_CONNECT_TARGETS = [
+    "127.0.0.1:5555",  # Tencent GameAssist / many ADB-over-TCP emulators
+    "127.0.0.1:5655",  # Tencent GameAssist secondary local service on some builds
+    "127.0.0.1:5554",
+    "127.0.0.1:5556",
+    "127.0.0.1:5557",
+    "127.0.0.1:7555",  # MuMu / generic emulator defaults
+    "127.0.0.1:7556",
+    "127.0.0.1:21503",  # LDPlayer common ports
+    "127.0.0.1:21513",
+    "127.0.0.1:16384",  # MuMu multi-instance common range
+    "127.0.0.1:16416",
+]
 
 
 def resolve_adb_path(configured: str | None = None) -> Path:
@@ -62,6 +75,10 @@ def resolve_adb_path(configured: str | None = None) -> Path:
 
 
 def list_connected_devices(adb_path: Path) -> list[str]:
+    return list_adb_devices(adb_path, only_online=True)
+
+
+def list_adb_devices(adb_path: Path, only_online: bool = True) -> list[str]:
     proc = subprocess.run(
         [str(adb_path), "devices", "-l"],
         text=True,
@@ -75,9 +92,43 @@ def list_connected_devices(adb_path: Path) -> list[str]:
         if not line or line.startswith("List of devices"):
             continue
         parts = line.split()
-        if len(parts) >= 2 and parts[1] == "device":
+        if len(parts) >= 2 and (parts[1] == "device" or not only_online):
             devices.append(parts[0])
     return devices
+
+
+def adb_command(adb_path: Path, *args: str, timeout: int = 10) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(adb_path), *args],
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        **HIDDEN_SUBPROCESS_KWARGS,
+    )
+
+
+def adb_connect_targets(configured_device: str | None = None) -> list[str]:
+    targets: list[str] = []
+    if configured_device and re.match(r"^(?:127\.0\.0\.1|localhost):\d+$", configured_device):
+        targets.append(configured_device)
+    for target in COMMON_ADB_CONNECT_TARGETS:
+        if target not in targets:
+            targets.append(target)
+    return targets
+
+
+def ensure_connected_devices(adb_path: Path, configured_device: str | None = None) -> list[str]:
+    adb_command(adb_path, "start-server", timeout=10)
+    devices = list_connected_devices(adb_path)
+    if devices:
+        return devices
+
+    for target in adb_connect_targets(configured_device):
+        try:
+            adb_command(adb_path, "connect", target, timeout=4)
+        except Exception:
+            continue
+    return list_connected_devices(adb_path)
 
 
 def display_quality(img: Image.Image) -> float:
@@ -99,7 +150,7 @@ def auto_detect_config(cfg: dict[str, Any]) -> dict[str, Any]:
     if not adb_path.exists():
         raise FileNotFoundError(f"adb not found: {adb_path}")
 
-    devices = list_connected_devices(adb_path)
+    devices = ensure_connected_devices(adb_path, cfg.get("device"))
     if not devices:
         raise RuntimeError("no connected ADB device found")
     configured_device = str(cfg.get("device") or "")
@@ -424,13 +475,8 @@ def run_loop(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
 
 def list_devices(args: argparse.Namespace) -> None:
     adb = resolve_adb_path(args.adb)
-    proc = subprocess.run(
-        [str(adb), "devices", "-l"],
-        text=True,
-        capture_output=True,
-        timeout=10,
-        **HIDDEN_SUBPROCESS_KWARGS,
-    )
+    ensure_connected_devices(adb, args.device)
+    proc = adb_command(adb, "devices", "-l", timeout=10)
     print(proc.stdout.strip())
     if proc.stderr.strip():
         print(proc.stderr.strip(), file=sys.stderr)
