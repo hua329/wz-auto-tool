@@ -18,7 +18,7 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.3"
+APP_VERSION = "0.0.4"
 
 
 class LogCapture(contextlib.AbstractContextManager):
@@ -83,6 +83,7 @@ class AutoDesktopApp(tk.Tk):
 
         ttk.Label(top, text="间隔秒").pack(side=tk.LEFT, padx=(20, 4))
         ttk.Spinbox(top, from_=0.5, to=30, increment=0.5, textvariable=self.interval, width=6).pack(side=tk.LEFT)
+        ttk.Label(top, text="推荐 1.0-1.5 秒").pack(side=tk.LEFT, padx=(6, 0))
 
         ttk.Label(top, textvariable=self.status, foreground="#1f5f99").pack(side=tk.RIGHT)
         ttk.Label(top, text=f"版本 {APP_VERSION}").pack(side=tk.RIGHT, padx=(0, 16))

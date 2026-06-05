@@ -149,34 +149,21 @@ states:
       x: 0.431
       y: 0.041
       coord: norm
-      followup_taps:
-        - x: 0.516
-          y: 0.355
-          coord: norm
-          delay: 0.8
-        - x: 0.922
-          y: 0.924
-          coord: norm
-          delay: 0.8
-    delay_after: 0.8
+    delay_after: 1.0
 
   - name: 07_hero_mid_pick_milaidi
     enabled: true
     mode: reference
     template: templates/07_hero_list_mid.png
-    current_crop: [0.36, 0.10, 0.78, 0.48]
-    reference_crop: [0.36, 0.18, 0.78, 0.52]
-    threshold: 0.86
+    current_crop: [0.26, 0.02, 0.68, 0.18]
+    reference_crop: [0.26, 0.08, 0.68, 0.24]
+    threshold: 0.78
     action:
-      type: tap
-      x: 0.516
-      y: 0.355
-      coord: norm
+      type: tap_template
+      template: templates/milaidi_avatar.png
+      search_region: [0.00, 0.10, 0.70, 0.72]
+      threshold: 0.66
       followup_taps:
-        - x: 0.516
-          y: 0.355
-          coord: norm
-          delay: 0.2
         - x: 0.922
           y: 0.924
           coord: norm
@@ -245,7 +232,7 @@ states:
     template: templates/10_defeat.png
     current_crop: [0.12, 0.12, 0.88, 0.70]
     reference_crop: [0.12, 0.18, 0.88, 0.72]
-    threshold: 0.84
+    threshold: 0.80
     action:
       type: tap
       x: 0.50
@@ -253,13 +240,26 @@ states:
       coord: norm
     delay_after: 2.5
 
+  - name: 10_result_continue_prompt
+    enabled: true
+    mode: heuristic
+    heuristic: continue_prompt
+    region: [0.34, 0.76, 0.66, 0.92]
+    threshold: 0.56
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.0
+
   - name: 11_victory_mvp_continue
     enabled: true
     mode: reference
     template: templates/11_victory_mvp_continue.png
     current_crop: [0.30, 0.42, 0.70, 0.92]
     reference_crop: [0.30, 0.48, 0.70, 0.93]
-    threshold: 0.80
+    threshold: 0.76
     action:
       type: tap
       x: 0.50
@@ -273,7 +273,7 @@ states:
     template: templates/11_victory_performance_continue.png
     current_crop: [0.38, 0.36, 0.72, 0.92]
     reference_crop: [0.38, 0.42, 0.72, 0.93]
-    threshold: 0.80
+    threshold: 0.76
     action:
       type: tap
       x: 0.50
@@ -286,7 +286,7 @@ states:
     template: templates/11_mvp_continue.png
     current_crop: [0.28, 0.50, 0.72, 0.92]
     reference_crop: [0.28, 0.54, 0.72, 0.93]
-    threshold: 0.80
+    threshold: 0.76
     action:
       type: tap
       x: 0.50
@@ -299,7 +299,7 @@ states:
     template: templates/11_performance_continue.png
     current_crop: [0.25, 0.45, 0.75, 0.93]
     reference_crop: [0.25, 0.45, 0.75, 0.93]
-    threshold: 0.80
+    threshold: 0.76
     action:
       type: tap
       x: 0.50
@@ -313,7 +313,7 @@ states:
     template: templates/12_victory_scoreboard.png
     current_crop: [0.00, 0.08, 1.00, 0.82]
     reference_crop: [0.00, 0.14, 1.00, 0.84]
-    threshold: 0.82
+    threshold: 0.80
     action:
       type: tap
       x: 0.578
@@ -326,7 +326,7 @@ states:
     template: templates/12_scoreboard.png
     current_crop: [0.00, 0.08, 1.00, 0.82]
     reference_crop: [0.00, 0.14, 1.00, 0.84]
-    threshold: 0.82
+    threshold: 0.80
     action:
       type: tap
       x: 0.578
@@ -345,4 +345,6 @@ states:
       y: 0.91
       coord: norm
     delay_after: 2.0
+
+
 

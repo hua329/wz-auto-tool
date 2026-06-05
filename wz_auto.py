@@ -7,6 +7,7 @@ import io
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -44,6 +45,12 @@ COMMON_ADB_CONNECT_TARGETS = [
     "127.0.0.1:21513",
     "127.0.0.1:16384",  # MuMu multi-instance common range
     "127.0.0.1:16416",
+]
+ADB_SCAN_PORT_RANGES = [
+    (5554, 5680),   # Tencent/GameAssist, generic Android emulator pairs
+    (7555, 7565),   # MuMu / generic emulator defaults
+    (16384, 16448), # MuMu multi-instance local ports
+    (21503, 21523), # LDPlayer common ports
 ]
 
 
@@ -114,6 +121,25 @@ def adb_connect_targets(configured_device: str | None = None) -> list[str]:
     for target in COMMON_ADB_CONNECT_TARGETS:
         if target not in targets:
             targets.append(target)
+    for target in scan_local_adb_targets():
+        if target not in targets:
+            targets.append(target)
+    return targets
+
+
+def scan_local_adb_targets(timeout: float = 0.04) -> list[str]:
+    targets: list[str] = []
+    seen_ports: set[int] = set()
+    for start, end in ADB_SCAN_PORT_RANGES:
+        for port in range(start, end + 1):
+            if port in seen_ports:
+                continue
+            seen_ports.add(port)
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+                    targets.append(f"127.0.0.1:{port}")
+            except OSError:
+                continue
     return targets
 
 
@@ -352,6 +378,25 @@ def heuristic_score(img: Image.Image, rule: dict[str, Any]) -> float:
         warm_ratio = float((orange | brown).mean())
         contrast = float(np.percentile(r - b, 90)) / 180.0
         return max(0.0, min(1.0, max(warm_ratio * 18.0, contrast)))
+    if kind == "continue_prompt":
+        roi = crop_box(img, rule.get("region", [0.34, 0.74, 0.66, 0.92]))
+        arr = np.asarray(roi, dtype=np.float32)
+        r = arr[:, :, 0]
+        g = arr[:, :, 1]
+        b = arr[:, :, 2]
+        brightness = arr.mean(axis=2)
+        bright = brightness > 120
+        blue_white = (b > 120) & (g > 95) & (r > 70) & (b >= r - 10)
+        glow = (b > 145) & (g > 125) & (r > 90)
+        gold = (r > 130) & (g > 95) & (r > b + 30) & (g > b + 10)
+        # Avoid treating gold room/start/confirm buttons as a result-page
+        # "click here to continue" prompt.
+        if float(gold.mean()) > 0.10:
+            return 0.0
+        ratio_score = max(float(blue_white.mean()) * 9.0, float(glow.mean()) * 7.0)
+        brightness_score = (float(np.percentile(brightness, 90)) - 105.0) / 120.0
+        line_score = float(bright.mean()) * 2.5
+        return max(0.0, min(1.0, max(ratio_score, brightness_score, line_score)))
     return 0.0
 
 
@@ -408,21 +453,93 @@ def action_point(action: dict[str, Any], size: tuple[int, int]) -> tuple[int, in
     return int(round(x)), int(round(y))
 
 
+def locate_template(
+    img: Image.Image,
+    template_path: Path,
+    search_region: list[float] | None,
+    threshold: float,
+) -> tuple[int, int, float] | None:
+    search_box = search_region or [0.0, 0.0, 1.0, 1.0]
+    w, h = img.size
+    left, top, right, bottom = search_box
+    if max(search_box) <= 1.0:
+        origin_x, origin_y = int(left * w), int(top * h)
+    else:
+        origin_x, origin_y = int(left), int(top)
+
+    search = crop_box(img, search_box).convert("RGB")
+    template = load_template_image(template_path).convert("RGB")
+    search_arr = np.asarray(search, dtype=np.float32)
+    best: tuple[int, int, float] | None = None
+
+    for scale in (0.84, 0.92, 1.0, 1.08, 1.16):
+        tw = max(18, int(round(template.width * scale)))
+        th = max(18, int(round(template.height * scale)))
+        if tw >= search.width or th >= search.height:
+            continue
+        tmpl = template.resize((tw, th), Image.Resampling.BILINEAR)
+        tmpl_arr = np.asarray(tmpl, dtype=np.float32)
+        step = max(3, min(tw, th) // 10)
+        for y in range(0, search.height - th + 1, step):
+            for x in range(0, search.width - tw + 1, step):
+                patch = search_arr[y : y + th, x : x + tw]
+                diff_score = 1.0 - float(np.mean(np.abs(patch - tmpl_arr)) / 255.0)
+                pa = patch.mean(axis=2)
+                ta = tmpl_arr.mean(axis=2)
+                pa = pa - float(pa.mean())
+                ta = ta - float(ta.mean())
+                denom = float(np.linalg.norm(pa) * np.linalg.norm(ta))
+                corr = 0.0 if denom == 0 else float(np.sum(pa * ta) / denom)
+                corr_score = (corr + 1.0) / 2.0
+                score = max(0.0, min(1.0, diff_score * 0.45 + corr_score * 0.55))
+                if best is None or score > best[2]:
+                    best = (origin_x + x + tw // 2, origin_y + y + th // 2, score)
+
+    if best and best[2] >= threshold:
+        return best
+    return best if threshold <= 0 else None
+
+
 def perform_action(adb: AdbClient, img: Image.Image, result: MatchResult, dry_run: bool) -> None:
     action = result.action
     kind = action.get("type", "none")
     if kind == "none":
         print(f"[state] {result.name} score={result.score:.3f}; no action")
         return
-    if kind != "tap":
+    if kind == "tap_template":
+        template = resolve_template(action["template"])
+        found = locate_template(
+            img,
+            template,
+            action.get("search_region"),
+            float(action.get("threshold", 0.72)),
+        )
+        if not found:
+            print(f"[state] {result.name} score={result.score:.3f}; template not found")
+            return
+        x, y, template_score = found
+        if dry_run:
+            print(
+                f"[dry-run] {result.name} score={result.score:.3f}; "
+                f"would tap template ({x}, {y}) template_score={template_score:.3f}"
+            )
+        else:
+            print(
+                f"[tap] {result.name} score={result.score:.3f}; "
+                f"tap template ({x}, {y}) template_score={template_score:.3f}"
+            )
+            adb.tap(x, y)
+    elif kind == "tap":
+        x, y = action_point(action, img.size)
+        if dry_run:
+            print(f"[dry-run] {result.name} score={result.score:.3f}; would tap ({x}, {y})")
+        else:
+            print(f"[tap] {result.name} score={result.score:.3f}; tap ({x}, {y})")
+            adb.tap(x, y)
+    else:
         print(f"[state] {result.name} score={result.score:.3f}; unsupported action={kind}")
         return
-    x, y = action_point(action, img.size)
-    if dry_run:
-        print(f"[dry-run] {result.name} score={result.score:.3f}; would tap ({x}, {y})")
-    else:
-        print(f"[tap] {result.name} score={result.score:.3f}; tap ({x}, {y})")
-        adb.tap(x, y)
+
     for followup in action.get("followup_taps", []):
         delay = float(followup.get("delay", 0.0))
         fx, fy = action_point(followup, img.size)
