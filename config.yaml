@@ -127,15 +127,7 @@ states:
           y: 0.041
           coord: norm
           delay: 0.8
-        - x: 0.516
-          y: 0.355
-          coord: norm
-          delay: 0.8
-        - x: 0.922
-          y: 0.924
-          coord: norm
-          delay: 0.8
-    delay_after: 0.8
+    delay_after: 1.0
 
   - name: 07_hero_list_choose_mid_tab
     enabled: true
