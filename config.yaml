@@ -219,6 +219,19 @@ states:
       coord: norm
     delay_after: 2.5
 
+  - name: 10_victory_badge_tap_continue
+    enabled: true
+    mode: heuristic
+    heuristic: victory_badge
+    region: [0.08, 0.05, 0.92, 0.76]
+    threshold: 0.50
+    action:
+      type: tap
+      x: 0.50
+      y: 0.86
+      coord: norm
+    delay_after: 2.5
+
   - name: 10_defeat_tap_continue
     mode: reference
     template: templates/10_defeat.png
@@ -337,6 +350,7 @@ states:
       y: 0.91
       coord: norm
     delay_after: 2.0
+
 
 
 

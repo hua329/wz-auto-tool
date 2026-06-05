@@ -9,7 +9,7 @@ if not exist "dist\%APP_NAME%\%APP_NAME%.exe" (
   pause
   exit /b 1
 )
-if exist "%APP_NAME%_v0.0.4.zip" del "%APP_NAME%_v0.0.4.zip"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'dist\%APP_NAME%\*' -DestinationPath '%APP_NAME%_v0.0.4.zip' -Force"
-echo Created %cd%\%APP_NAME%_v0.0.4.zip
+if exist "%APP_NAME%_v0.0.5.zip" del "%APP_NAME%_v0.0.5.zip"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'dist\%APP_NAME%\*' -DestinationPath '%APP_NAME%_v0.0.5.zip' -Force"
+echo Created %cd%\%APP_NAME%_v0.0.5.zip
 pause

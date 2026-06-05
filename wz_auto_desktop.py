@@ -18,7 +18,7 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.4"
+APP_VERSION = "0.0.5"
 
 
 class LogCapture(contextlib.AbstractContextManager):
@@ -44,8 +44,8 @@ class AutoDesktopApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"王者荣耀自动练级工具 v{APP_VERSION}")
-        self.geometry("1100x760")
-        self.minsize(980, 680)
+        self.geometry("1220x780")
+        self.minsize(1060, 680)
 
         self.cfg = wz_auto.load_config(CONFIG_PATH)
         self.adb = self._new_adb()
@@ -99,19 +99,21 @@ class AutoDesktopApp(tk.Tk):
         middle = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
         middle.pack(fill=tk.BOTH, expand=True)
 
-        preview_frame = ttk.Labelframe(middle, text="ADB 画面预览")
+        preview_frame = ttk.Labelframe(middle, text="实时游戏页面预览")
+        preview_frame.configure(width=820)
         self.preview = ttk.Label(preview_frame, anchor=tk.CENTER)
         self.preview.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-        middle.add(preview_frame, weight=3)
+        middle.add(preview_frame, weight=5)
 
         log_frame = ttk.Labelframe(middle, text="日志")
+        log_frame.configure(width=360)
         self.log = tk.Text(log_frame, height=20, wrap=tk.WORD)
         self.log.configure(state=tk.DISABLED)
         log_scroll = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log.yview)
         self.log.configure(yscrollcommand=log_scroll.set)
         self.log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        middle.add(log_frame, weight=2)
+        middle.add(log_frame, weight=1)
 
     def log_line(self, text: str) -> None:
         self.events.put(("log", text))
@@ -138,7 +140,8 @@ class AutoDesktopApp(tk.Tk):
         self.after(120, self._drain_events)
 
     def _show_preview(self, img) -> None:
-        max_w, max_h = 660, 430
+        max_w = max(720, self.preview.winfo_width() - 16)
+        max_h = max(430, self.preview.winfo_height() - 16)
         preview = img.copy()
         preview.thumbnail((max_w, max_h))
         self.preview_image = ImageTk.PhotoImage(preview)

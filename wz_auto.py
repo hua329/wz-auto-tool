@@ -378,6 +378,24 @@ def heuristic_score(img: Image.Image, rule: dict[str, Any]) -> float:
         warm_ratio = float((orange | brown).mean())
         contrast = float(np.percentile(r - b, 90)) / 180.0
         return max(0.0, min(1.0, max(warm_ratio * 18.0, contrast)))
+    if kind == "victory_badge":
+        roi = crop_box(img, rule.get("region", [0.10, 0.08, 0.90, 0.72]))
+        arr = np.asarray(roi, dtype=np.float32)
+        r = arr[:, :, 0]
+        g = arr[:, :, 1]
+        b = arr[:, :, 2]
+        brightness = arr.mean(axis=2)
+        blue = (b > 115) & (g > 85) & (b > r + 18)
+        pale_blue = (b > 150) & (g > 135) & (r > 105) & (b >= r)
+        gold = (r > 150) & (g > 110) & (r > b + 20) & (g > b + 8)
+        dark_bg = float((brightness < 105).mean())
+        blue_score = max(float(blue.mean()) * 7.0, float(pale_blue.mean()) * 5.5)
+        gold_score = float(gold.mean()) * 9.0
+        contrast_score = (float(np.percentile(b - r, 90)) + 20.0) / 160.0
+        # The blue victory emblem has a large blue wing area plus gold text,
+        # usually over a dimmed game background.
+        score = max(min(blue_score, 0.72) + min(gold_score, 0.35), contrast_score * 0.55 + dark_bg * 0.35)
+        return max(0.0, min(1.0, score))
     if kind == "continue_prompt":
         roi = crop_box(img, rule.get("region", [0.34, 0.74, 0.66, 0.92]))
         arr = np.asarray(roi, dtype=np.float32)
