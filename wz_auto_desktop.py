@@ -8,7 +8,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 
 from PIL import ImageTk
 
@@ -17,7 +17,20 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
-APP_VERSION = "0.0.7"
+APP_VERSION = "0.0.8"
+
+BG = "#edf2f7"
+CARD = "#ffffff"
+INK = "#111827"
+MUTED = "#64748b"
+LINE = "#d9e2ec"
+HEADER = "#172033"
+PRIMARY = "#2563eb"
+PRIMARY_HOVER = "#1d4ed8"
+DANGER = "#dc2626"
+DANGER_HOVER = "#b91c1c"
+SECONDARY = "#e2e8f0"
+SECONDARY_HOVER = "#cbd5e1"
 
 
 class LogCapture(contextlib.AbstractContextManager):
@@ -43,24 +56,45 @@ class PreviewWindow(tk.Toplevel):
     def __init__(self, master: "AutoDesktopApp"):
         super().__init__(master)
         self.title("实时游戏页面预览")
-        self.geometry("920x560")
-        self.minsize(640, 400)
-        self.configure(bg="#111827")
+        self.geometry("980x600")
+        self.minsize(720, 440)
+        self.configure(bg="#0f172a")
         self.preview_image = None
-        self.label = tk.Label(
-            self,
-            text="等待截图",
+
+        header = tk.Frame(self, bg="#111827", height=48)
+        header.pack(fill=tk.X)
+        tk.Label(
+            header,
+            text="实时游戏页面预览",
             bg="#111827",
-            fg="#cbd5e1",
+            fg="#f8fafc",
+            font=("Microsoft YaHei UI", 13, "bold"),
+        ).pack(side=tk.LEFT, padx=16)
+        tk.Label(
+            header,
+            text="窗口关闭后不会停止自动循环",
+            bg="#111827",
+            fg="#94a3b8",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(side=tk.RIGHT, padx=16)
+
+        body = tk.Frame(self, bg="#0f172a")
+        body.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        self.label = tk.Label(
+            body,
+            text="等待截图",
+            bg="#020617",
+            fg="#94a3b8",
             font=("Microsoft YaHei UI", 12),
             anchor=tk.CENTER,
+            bd=0,
         )
-        self.label.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.label.pack(fill=tk.BOTH, expand=True)
         self.protocol("WM_DELETE_WINDOW", master.close_preview)
 
     def show_image(self, img) -> None:
-        max_w = max(600, self.label.winfo_width() - 20)
-        max_h = max(360, self.label.winfo_height() - 20)
+        max_w = max(680, self.label.winfo_width() - 18)
+        max_h = max(400, self.label.winfo_height() - 18)
         preview = img.copy()
         preview.thumbnail((max_w, max_h))
         self.preview_image = ImageTk.PhotoImage(preview)
@@ -71,8 +105,9 @@ class AutoDesktopApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"王者荣耀自动练级工具 v{APP_VERSION}")
-        self.geometry("650x230")
+        self.geometry("760x360")
         self.resizable(False, False)
+        self.configure(bg=BG)
 
         self.cfg = wz_auto.load_config(CONFIG_PATH)
         self.adb = self._new_adb()
@@ -86,27 +121,13 @@ class AutoDesktopApp(tk.Tk):
 
         self.interval = tk.DoubleVar(value=float(self.cfg.get("interval", 1.2)))
         self.status = tk.StringVar(value="就绪")
-        self.device_text = tk.StringVar(value=f"设备：{self.cfg.get('device') or '未检测'}")
-        self.log_text = tk.StringVar(value="日志：等待操作")
+        self.device_text = tk.StringVar(value=self.cfg.get("device") or "未检测")
+        self.display_text = tk.StringVar(value=f"Display {self.cfg.get('display') or '自动'}")
+        self.log_text = tk.StringVar(value="等待操作")
 
-        self._configure_style()
         self._build_ui()
         self.after(120, self._drain_events)
         self.after(300, self.refresh_devices)
-
-    def _configure_style(self) -> None:
-        style = ttk.Style(self)
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
-        style.configure("TFrame", background="#f4f6fb")
-        style.configure("Main.TLabel", background="#f4f6fb", foreground="#111827", font=("Microsoft YaHei UI", 10))
-        style.configure("Meta.TLabel", background="#f4f6fb", foreground="#334155", font=("Microsoft YaHei UI", 9))
-        style.configure("Title.TLabel", background="#f4f6fb", foreground="#111827", font=("Microsoft YaHei UI", 12, "bold"))
-        style.configure("Footer.TLabel", background="#f4f6fb", foreground="#64748b", font=("Microsoft YaHei UI", 9))
-        style.configure("Primary.TButton", font=("Microsoft YaHei UI", 10, "bold"), padding=(14, 7))
-        style.configure("TButton", font=("Microsoft YaHei UI", 10), padding=(12, 7))
 
     def reload_config(self) -> None:
         self.cfg = wz_auto.load_config(CONFIG_PATH)
@@ -119,35 +140,130 @@ class AutoDesktopApp(tk.Tk):
         return wz_auto.AdbClient(adb_path, device, display)
 
     def _build_ui(self) -> None:
-        root = ttk.Frame(self, padding=14)
-        root.pack(fill=tk.BOTH, expand=True)
+        shell = tk.Frame(self, bg=BG)
+        shell.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
 
-        top = ttk.Frame(root)
-        top.pack(fill=tk.X)
-        ttk.Label(top, text="王者荣耀自动练级工具", style="Title.TLabel").pack(side=tk.LEFT)
-        ttk.Label(top, text=f"版本 {APP_VERSION}", style="Meta.TLabel").pack(side=tk.RIGHT)
-        ttk.Label(top, textvariable=self.status, style="Meta.TLabel").pack(side=tk.RIGHT, padx=(0, 18))
+        self._build_header(shell)
+        self._build_status_cards(shell)
+        self._build_actions(shell)
+        self._build_log(shell)
+        tk.Label(shell, text="Designed by 小北", bg=BG, fg="#7b8794", font=("Microsoft YaHei UI", 9)).pack(side=tk.BOTTOM)
 
-        info = ttk.Frame(root)
-        info.pack(fill=tk.X, pady=(16, 10))
-        ttk.Label(info, textvariable=self.device_text, style="Main.TLabel").pack(side=tk.LEFT)
-        ttk.Label(info, text="间隔秒", style="Main.TLabel").pack(side=tk.LEFT, padx=(24, 5))
-        ttk.Spinbox(info, from_=0.5, to=30, increment=0.1, textvariable=self.interval, width=6).pack(side=tk.LEFT)
-        ttk.Label(info, text="推荐 1.0-1.5 秒", style="Main.TLabel").pack(side=tk.LEFT, padx=(10, 0))
+    def _build_header(self, parent: tk.Frame) -> None:
+        header = tk.Frame(parent, bg=HEADER, height=76, highlightthickness=0)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
 
-        buttons = ttk.Frame(root)
-        buttons.pack(fill=tk.X, pady=(4, 12))
-        ttk.Button(buttons, text="刷新设备", command=self.refresh_devices).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(buttons, text="自动检测", command=self.auto_config).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(buttons, text="开始", style="Primary.TButton", command=self.start_loop).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(buttons, text="停止", command=self.stop_loop).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(buttons, text="实时游戏页面预览", command=self.open_preview).pack(side=tk.LEFT)
+        left = tk.Frame(header, bg=HEADER)
+        left.pack(side=tk.LEFT, padx=18, pady=12)
+        tk.Label(
+            left,
+            text="王者荣耀自动练级工具",
+            bg=HEADER,
+            fg="#ffffff",
+            font=("Microsoft YaHei UI", 17, "bold"),
+        ).pack(anchor=tk.W)
+        tk.Label(
+            left,
+            text="自动检测 · 循环点击 · 对局等待",
+            bg=HEADER,
+            fg="#b6c2d2",
+            font=("Microsoft YaHei UI", 9),
+        ).pack(anchor=tk.W, pady=(3, 0))
 
-        log = ttk.Frame(root)
-        log.pack(fill=tk.X, pady=(2, 12))
-        ttk.Label(log, textvariable=self.log_text, style="Meta.TLabel", anchor=tk.W).pack(fill=tk.X)
+        right = tk.Frame(header, bg=HEADER)
+        right.pack(side=tk.RIGHT, padx=18)
+        self.status_pill = tk.Label(
+            right,
+            textvariable=self.status,
+            bg="#0f766e",
+            fg="#ecfeff",
+            font=("Microsoft YaHei UI", 10, "bold"),
+            padx=14,
+            pady=6,
+        )
+        self.status_pill.pack(side=tk.RIGHT)
+        tk.Label(
+            right,
+            text=f"v{APP_VERSION}",
+            bg=HEADER,
+            fg="#cbd5e1",
+            font=("Microsoft YaHei UI", 10),
+        ).pack(side=tk.RIGHT, padx=(0, 14))
 
-        ttk.Label(root, text="Designed by 小北", style="Footer.TLabel").pack(side=tk.BOTTOM, anchor=tk.CENTER)
+    def _build_status_cards(self, parent: tk.Frame) -> None:
+        row = tk.Frame(parent, bg=BG)
+        row.pack(fill=tk.X, pady=(12, 10))
+        self._card(row, "ADB 设备", self.device_text, 255).pack(side=tk.LEFT, padx=(0, 10))
+        self._card(row, "画面编号", self.display_text, 150).pack(side=tk.LEFT, padx=(0, 10))
+
+        interval = tk.Frame(row, bg=CARD, width=300, height=76, highlightbackground=LINE, highlightthickness=1)
+        interval.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        interval.pack_propagate(False)
+        tk.Label(interval, text="识别间隔", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 9)).pack(anchor=tk.W, padx=14, pady=(10, 2))
+        line = tk.Frame(interval, bg=CARD)
+        line.pack(anchor=tk.W, padx=14)
+        tk.Spinbox(
+            line,
+            from_=0.5,
+            to=30,
+            increment=0.1,
+            textvariable=self.interval,
+            width=6,
+            font=("Microsoft YaHei UI", 10),
+            relief=tk.SOLID,
+            bd=1,
+            justify=tk.CENTER,
+        ).pack(side=tk.LEFT)
+        tk.Label(line, text="秒", bg=CARD, fg=INK, font=("Microsoft YaHei UI", 10, "bold")).pack(side=tk.LEFT, padx=(6, 12))
+        tk.Label(line, text="推荐 1.0-1.5", bg="#eef6ff", fg="#2563eb", font=("Microsoft YaHei UI", 9), padx=8, pady=2).pack(side=tk.LEFT)
+
+    def _card(self, parent: tk.Frame, title: str, value: tk.StringVar, width: int) -> tk.Frame:
+        card = tk.Frame(parent, bg=CARD, width=width, height=76, highlightbackground=LINE, highlightthickness=1)
+        card.pack_propagate(False)
+        tk.Label(card, text=title, bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 9)).pack(anchor=tk.W, padx=14, pady=(10, 2))
+        tk.Label(card, textvariable=value, bg=CARD, fg=INK, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor=tk.W, padx=14)
+        return card
+
+    def _build_actions(self, parent: tk.Frame) -> None:
+        card = tk.Frame(parent, bg=CARD, height=82, highlightbackground=LINE, highlightthickness=1)
+        card.pack(fill=tk.X)
+        card.pack_propagate(False)
+
+        row = tk.Frame(card, bg=CARD)
+        row.pack(fill=tk.X, padx=12, pady=14)
+        self._button(row, "刷新设备", self.refresh_devices, SECONDARY, INK, SECONDARY_HOVER, 108).pack(side=tk.LEFT, padx=(0, 8))
+        self._button(row, "自动检测", self.auto_config, SECONDARY, INK, SECONDARY_HOVER, 108).pack(side=tk.LEFT, padx=(0, 8))
+        self._button(row, "开始", self.start_loop, PRIMARY, "#ffffff", PRIMARY_HOVER, 108).pack(side=tk.LEFT, padx=(0, 8))
+        self._button(row, "停止", self.stop_loop, DANGER, "#ffffff", DANGER_HOVER, 96).pack(side=tk.LEFT, padx=(0, 8))
+        self._button(row, "实时游戏页面预览", self.open_preview, "#111827", "#ffffff", "#1f2937", 170).pack(side=tk.LEFT)
+
+    def _button(self, parent: tk.Frame, text: str, command, bg: str, fg: str, active_bg: str, width: int) -> tk.Button:
+        btn = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=bg,
+            fg=fg,
+            activebackground=active_bg,
+            activeforeground=fg,
+            relief=tk.FLAT,
+            bd=0,
+            width=max(8, width // 10),
+            height=2,
+            cursor="hand2",
+            font=("Microsoft YaHei UI", 10, "bold" if bg in (PRIMARY, DANGER, "#111827") else "normal"),
+        )
+        btn.bind("<Enter>", lambda _e: btn.configure(bg=active_bg))
+        btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
+        return btn
+
+    def _build_log(self, parent: tk.Frame) -> None:
+        card = tk.Frame(parent, bg=CARD, height=54, highlightbackground=LINE, highlightthickness=1)
+        card.pack(fill=tk.X, pady=(10, 8))
+        card.pack_propagate(False)
+        tk.Label(card, text="最新日志", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT, padx=(14, 10))
+        tk.Label(card, textvariable=self.log_text, bg=CARD, fg=INK, font=("Consolas", 9), anchor=tk.W).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def open_preview(self) -> None:
         if self.preview_window is None or not self.preview_window.winfo_exists():
@@ -171,8 +287,6 @@ class AutoDesktopApp(tk.Tk):
         def worker():
             while not self.preview_stop_event.is_set():
                 try:
-                    # The main automation loop already refreshes the popup.
-                    # When the loop is idle, keep the preview window live.
                     if not (self.worker and self.worker.is_alive()):
                         self.reload_config()
                         img = self.adb.capture()
@@ -183,12 +297,6 @@ class AutoDesktopApp(tk.Tk):
 
         self.preview_worker = threading.Thread(target=worker, daemon=True)
         self.preview_worker.start()
-
-    def _capture_preview_once(self) -> None:
-        self.reload_config()
-        img = self.adb.capture()
-        self.events.put(("preview", img))
-        self.log_line("[preview] 已更新实时游戏页面预览")
 
     def log_line(self, text: str) -> None:
         self.events.put(("log", text))
@@ -203,11 +311,14 @@ class AutoDesktopApp(tk.Tk):
             except queue.Empty:
                 break
             if kind == "log":
-                self.log_text.set(f"日志：{payload}")
+                self.log_text.set(str(payload))
             elif kind == "status":
                 self.status.set(str(payload))
+                self.status_pill.configure(bg="#0f766e" if str(payload) == "就绪" else "#2563eb")
             elif kind == "device":
                 self.device_text.set(str(payload))
+            elif kind == "display":
+                self.display_text.set(str(payload))
             elif kind == "preview":
                 self.latest_image = payload
                 if self.preview_window is not None and self.preview_window.winfo_exists():
@@ -243,7 +354,8 @@ class AutoDesktopApp(tk.Tk):
                 wz_auto.update_config_file(CONFIG_PATH, {"device": device})
                 self.reload_config()
                 self.log_line(f"[auto] device={device} 已写入 config.yaml")
-            self.events.put(("device", f"设备：{device} 已连接" if device in devices else "设备：未确认连接"))
+            self.events.put(("device", f"{device} 已连接" if device in devices else "未确认连接"))
+            self.events.put(("display", f"Display {self.cfg.get('display') or '自动'}"))
             self.log_line("[device] 刷新完成")
 
         self._run_bg("刷新设备中", task)
@@ -262,7 +374,8 @@ class AutoDesktopApp(tk.Tk):
             )
             self.reload_config()
             self.events.put(("preview", result["image"]))
-            self.events.put(("device", f"设备：{result['device']} 已连接"))
+            self.events.put(("device", f"{result['device']} 已连接"))
+            self.events.put(("display", f"Display {result['display']}"))
             self.log_line(f"[auto] display={result['display']} score={result['display_score']:.3f}")
 
         self._run_bg("自动检测中", task)
@@ -282,7 +395,8 @@ class AutoDesktopApp(tk.Tk):
                 )
                 self.reload_config()
                 self.events.put(("preview", result["image"]))
-                self.events.put(("device", f"设备：{result['device']} 已连接"))
+                self.events.put(("device", f"{result['device']} 已连接"))
+                self.events.put(("display", f"Display {result['display']}"))
                 self.log_line(f"[auto] device={result['device']} display={result['display']}")
             except Exception as exc:
                 self.log_line(f"[auto warning] {exc}")
