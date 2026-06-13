@@ -1,4 +1,4 @@
-﻿adb_path: ""
+adb_path: ""
 device: ""
 display: "2"
 interval: 1.2
@@ -350,7 +350,6 @@ states:
       y: 0.91
       coord: norm
     delay_after: 2.0
-
 
 
 
