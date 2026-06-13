@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import queue
 import re
 import sys
@@ -18,26 +19,19 @@ import wz_auto
 
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "config.yaml"
+THEME_PATH = APP_DIR / "theme.json"
 APP_VERSION = "1.0.1"
+FONT = "Microsoft YaHei UI"
+MONO = "Consolas"
 
-BG = "#1f252f"
-PANEL = "#333b49"
-CARD = "#49515f"
-CARD_DARK = "#38414d"
-BORDER = "#687280"
-TEXT = "#f8fafc"
-MUTED = "#a8b0bd"
-SUBTLE = "#7f8794"
-GREEN = "#38d97a"
-GREEN_DARK = "#246a45"
-PRIMARY = "#5d8cff"
-PRIMARY_DARK = "#416ee6"
-DANGER = "#ef4444"
-DANGER_DARK = "#b91c1c"
-BUTTON = "#4b5563"
-BUTTON_HOVER = "#5b6573"
-BLACK_BAR = "#303844"
-
+PRESETS = [
+    {"name": "默认", "bg": "#0f1923", "c1": "#1a56db", "c2": "#7c3aed", "c3": "#0e7490", "s1": 40, "s2": 30, "s3": 20},
+    {"name": "夜幕", "bg": "#0d0d14", "c1": "#6450dc", "c2": "#c83c78", "c3": "#3cb4dc", "s1": 35, "s2": 28, "s3": 22},
+    {"name": "极光", "bg": "#021a10", "c1": "#14dc8c", "c2": "#14b4dc", "c3": "#50f0a0", "s1": 38, "s2": 32, "s3": 18},
+    {"name": "玫瑰", "bg": "#1a0812", "c1": "#dc3c78", "c2": "#b428c8", "c3": "#f06450", "s1": 42, "s2": 30, "s3": 20},
+    {"name": "琥珀", "bg": "#1a1000", "c1": "#dc8c14", "c2": "#c85014", "c3": "#f0b428", "s1": 40, "s2": 28, "s3": 22},
+    {"name": "霜白", "bg": "#1a1e24", "c1": "#b4c8dc", "c2": "#8ca0c8", "c3": "#c8d2e6", "s1": 30, "s2": 22, "s3": 16},
+]
 
 FRIENDLY_STATES = {
     "00_in_game_minimap_guard": "游戏中，等待对局结束",
@@ -65,12 +59,52 @@ FRIENDLY_STATES = {
 }
 
 
+def hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.strip().lstrip("#")
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def alpha_blend(fg_hex: str, bg_hex: str, alpha: float) -> str:
+    fr, fg, fb = hex_to_rgb(fg_hex)
+    br, bg, bb = hex_to_rgb(bg_hex)
+    r = int(fr * alpha + br * (1 - alpha))
+    g = int(fg * alpha + bg * (1 - alpha))
+    b = int(fb * alpha + bb * (1 - alpha))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def glass_color(bg: str, alpha: float = 0.13) -> str:
+    return alpha_blend("#ffffff", bg, alpha)
+
+
+def glass_border(bg: str, alpha: float = 0.28) -> str:
+    return alpha_blend("#ffffff", bg, alpha)
+
+
+def load_theme() -> dict:
+    if THEME_PATH.exists():
+        try:
+            data = json.loads(THEME_PATH.read_text(encoding="utf-8"))
+            if {"bg", "c1", "c2", "c3", "s1", "s2", "s3"}.issubset(data):
+                return data
+        except Exception:
+            pass
+    return PRESETS[0].copy()
+
+
+def save_theme(theme: dict) -> None:
+    try:
+        THEME_PATH.write_text(json.dumps(theme, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def friendly_log_text(text: str) -> str:
-    state_match = re.search(r"\[(?:tap|state|dry-run)\]\s+([A-Za-z0-9_]+)", text)
-    if not state_match:
-        state_match = re.search(r"\[followup tap\]\s+([A-Za-z0-9_]+)", text)
-    if state_match:
-        return FRIENDLY_STATES.get(state_match.group(1), "识别到页面，继续执行")
+    match = re.search(r"\[(?:tap|state|dry-run)\]\s+([A-Za-z0-9_]+)", text)
+    if not match:
+        match = re.search(r"\[followup tap\]\s+([A-Za-z0-9_]+)", text)
+    if match:
+        return FRIENDLY_STATES.get(match.group(1), "识别到页面，继续执行")
     if text.startswith("[wait]"):
         return "等待识别当前页面"
     if text.startswith("[loop] start"):
@@ -83,6 +117,8 @@ def friendly_log_text(text: str) -> str:
         return "开始自动检测设备"
     if text.startswith("[auto] device=") or text.startswith("[auto] display="):
         return "自动检测完成"
+    if text.startswith("[device]"):
+        return "设备刷新完成"
     if text.startswith("[auto warning]"):
         return "自动检测提醒，请确认模拟器已开启 ADB"
     if text.startswith("[preview error]"):
@@ -119,58 +155,75 @@ class PreviewWindow(tk.Toplevel):
         self.title("实时游戏页面预览")
         self.geometry("980x600")
         self.minsize(720, 440)
-        self.configure(bg=BG)
+        self.configure(bg="#0f172a")
         self.preview_image = None
 
-        header = tk.Frame(self, bg=PANEL, height=54)
+        header = tk.Frame(self, bg="#111827", height=48)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
-        tk.Label(
-            header,
-            text="实时游戏页面预览",
-            bg=PANEL,
-            fg=TEXT,
-            font=("Microsoft YaHei UI", 14, "bold"),
-        ).pack(side=tk.LEFT, padx=18)
-        tk.Label(
-            header,
-            text="关闭此窗口不会停止循环",
-            bg=PANEL,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 9),
-        ).pack(side=tk.RIGHT, padx=18)
+        tk.Label(header, text="实时游戏页面预览", bg="#111827", fg="#f8fafc", font=(FONT, 13, "bold")).pack(
+            side=tk.LEFT, padx=18, pady=12
+        )
+        tk.Label(header, text="关闭窗口不会停止循环", bg="#111827", fg="#94a3b8", font=(FONT, 9)).pack(
+            side=tk.RIGHT, padx=18
+        )
 
-        body = tk.Frame(self, bg=BG)
+        body = tk.Frame(self, bg="#0f172a")
         body.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
         self.label = tk.Label(
             body,
             text="等待截图",
-            bg="#111827",
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 12),
+            bg="#1e293b",
+            fg="#64748b",
+            font=(FONT, 12),
             anchor=tk.CENTER,
             bd=0,
+            highlightbackground="#334155",
+            highlightthickness=1,
         )
         self.label.pack(fill=tk.BOTH, expand=True)
         self.protocol("WM_DELETE_WINDOW", master.close_preview)
 
     def show_image(self, img) -> None:
-        max_w = max(680, self.label.winfo_width() - 18)
-        max_h = max(400, self.label.winfo_height() - 18)
+        width = max(680, self.label.winfo_width() - 18)
+        height = max(400, self.label.winfo_height() - 18)
         preview = img.copy()
-        preview.thumbnail((max_w, max_h))
+        preview.thumbnail((width, height))
         self.preview_image = ImageTk.PhotoImage(preview)
         self.label.configure(image=self.preview_image, text="")
+
+
+def dark_btn(parent, text, command, bg, fg, hover, width=10):
+    btn = tk.Button(
+        parent,
+        text=text,
+        command=command,
+        bg=bg,
+        fg=fg,
+        activebackground=hover,
+        activeforeground=fg,
+        relief=tk.FLAT,
+        bd=0,
+        width=width,
+        height=2,
+        cursor="hand2",
+        font=(FONT, 10, "bold"),
+        highlightthickness=1,
+        highlightbackground=glass_border(bg, 0.22),
+    )
+    btn.bind("<Enter>", lambda _e: btn.configure(bg=hover))
+    btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
+    return btn
 
 
 class AutoDesktopApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"王者荣耀自动练级工具 v{APP_VERSION}")
-        self.geometry("940x690")
+        self.geometry("540x660")
         self.resizable(False, False)
-        self.configure(bg=BG)
 
+        self.theme = load_theme()
         self.cfg = wz_auto.load_config(CONFIG_PATH)
         self.adb = self._new_adb()
         self.worker: threading.Thread | None = None
@@ -180,18 +233,32 @@ class AutoDesktopApp(tk.Tk):
         self.preview_worker: threading.Thread | None = None
         self.preview_stop_event = threading.Event()
         self.latest_image = None
+        self.loop_count = 0
 
         self.interval = tk.DoubleVar(value=float(self.cfg.get("interval", 1.2)))
-        self.interval_text = tk.StringVar(value=f"{self.interval.get():.1f}s")
         self.device_text = tk.StringVar(value=self.cfg.get("device") or "未检测")
-        self.connection_text = tk.StringVar(value="检测中")
-        self.display_text = tk.StringVar(value=f"Display {self.cfg.get('display') or '自动'}")
-        self.run_state_text = tk.StringVar(value="待命")
         self.log_text = tk.StringVar(value="等待操作")
 
+        self._apply_theme(self.theme, rebuild=False)
         self._build_ui()
         self.after(120, self._drain_events)
         self.after(300, self.refresh_devices)
+
+    def _apply_theme(self, theme: dict, rebuild=True) -> None:
+        self.theme = theme
+        bg = theme["bg"]
+        self.configure(bg=bg)
+        self._bg = bg
+        self._gc = glass_color(bg, 0.11)
+        self._gb = glass_border(bg, 0.26)
+        self._gc_btn = glass_color(bg, 0.18)
+        if rebuild:
+            self._rebuild()
+
+    def _rebuild(self) -> None:
+        for widget in self.winfo_children():
+            widget.destroy()
+        self._build_ui()
 
     def reload_config(self) -> None:
         self.cfg = wz_auto.load_config(CONFIG_PATH)
@@ -204,371 +271,361 @@ class AutoDesktopApp(tk.Tk):
         return wz_auto.AdbClient(adb_path, device, display)
 
     def _build_ui(self) -> None:
-        shell = tk.Frame(self, bg=BG)
-        shell.pack(fill=tk.BOTH, expand=True, padx=34, pady=16)
+        bg = self._bg
+        top_bg = glass_color(bg, 0.06)
 
-        panel = tk.Frame(shell, bg=PANEL, highlightbackground=BORDER, highlightthickness=2)
-        panel.pack(fill=tk.BOTH, expand=True)
+        title_bar = tk.Frame(self, bg=top_bg, height=46)
+        title_bar.pack(fill=tk.X)
+        title_bar.pack_propagate(False)
+        tk.Frame(title_bar, bg=glass_border(bg, 0.14), height=1).pack(fill=tk.X, side=tk.BOTTOM)
 
-        self._build_header(panel)
-        body = tk.Frame(panel, bg=PANEL)
-        body.pack(fill=tk.BOTH, expand=True, padx=24, pady=18)
-
-        self._build_status_cards(body)
-        self._build_interval_card(body)
-        self._build_log_card(body)
-        self._build_actions(body)
-        self._build_footer(body)
-
-    def _build_header(self, parent: tk.Frame) -> None:
-        header = tk.Frame(parent, bg=PANEL, height=92)
-        header.pack(fill=tk.X)
-        header.pack_propagate(False)
-
-        icon = tk.Label(
-            header,
-            text="王",
-            bg="#4b5563",
-            fg=TEXT,
-            width=3,
-            height=1,
-            font=("Microsoft YaHei UI", 22, "bold"),
-            highlightbackground="#8a94a3",
-            highlightthickness=2,
+        title_left = tk.Frame(title_bar, bg=top_bg)
+        title_left.pack(side=tk.LEFT, padx=14, pady=8)
+        logo = tk.Frame(title_left, bg=glass_color(bg, 0.22), width=26, height=26)
+        logo.pack(side=tk.LEFT)
+        logo.pack_propagate(False)
+        tk.Label(logo, text="王", bg=glass_color(bg, 0.22), fg="#ffffff", font=(FONT, 12, "bold")).pack(expand=True)
+        tk.Label(title_left, text="  王者荣耀自动练级", bg=top_bg, fg="#ffffff", font=(FONT, 12, "bold")).pack(
+            side=tk.LEFT
         )
-        icon.pack(side=tk.LEFT, padx=(24, 14), pady=20)
-
-        title_box = tk.Frame(header, bg=PANEL)
-        title_box.pack(side=tk.LEFT, pady=20)
-        title_row = tk.Frame(title_box, bg=PANEL)
-        title_row.pack(anchor=tk.W)
-        tk.Label(
-            title_row,
-            text="王者荣耀自动练级",
-            bg=PANEL,
-            fg=TEXT,
-            font=("Microsoft YaHei UI", 19, "bold"),
-        ).pack(side=tk.LEFT)
-        tk.Label(
-            title_row,
-            text=f"v{APP_VERSION}",
-            bg="#4b5563",
-            fg="#cbd5e1",
-            padx=10,
-            pady=3,
-            font=("Microsoft YaHei UI", 10, "bold"),
-            highlightbackground="#798392",
-            highlightthickness=1,
-        ).pack(side=tk.LEFT, padx=(14, 0))
-        tk.Label(
-            title_box,
-            text="自动检测 · 循环点击 · 对局等待",
-            bg=PANEL,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 10),
-        ).pack(anchor=tk.W, pady=(6, 0))
-
-        lights = tk.Frame(header, bg=PANEL)
-        lights.pack(side=tk.RIGHT, padx=24, pady=28)
-        for color in ("#ff5f56", "#ffbd2e", "#27c93f"):
-            tk.Label(lights, text="●", bg=PANEL, fg=color, font=("Microsoft YaHei UI", 18)).pack(side=tk.LEFT, padx=4)
-
-        tk.Frame(parent, bg="#556071", height=1).pack(fill=tk.X)
-
-    def _build_status_cards(self, parent: tk.Frame) -> None:
-        row = tk.Frame(parent, bg=PANEL)
-        row.pack(fill=tk.X, pady=(6, 14))
-        self._status_card(row, "设备状态", self.device_text, self.connection_text).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 12))
-        self._status_card(row, "运行状态", self.display_text, self.run_state_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-    def _status_card(self, parent: tk.Frame, title: str, value: tk.StringVar, badge: tk.StringVar) -> tk.Frame:
-        card = tk.Frame(parent, bg=CARD, height=126, highlightbackground=BORDER, highlightthickness=2)
-        card.pack_propagate(False)
-        tk.Label(card, text=title, bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor=tk.W, padx=18, pady=(18, 8))
-        tk.Label(card, textvariable=value, bg=CARD, fg=TEXT, font=("Consolas", 13)).pack(anchor=tk.W, padx=18)
-        badge_label = tk.Label(
-            card,
-            textvariable=badge,
-            bg=GREEN_DARK,
-            fg="#a7f3d0",
-            padx=14,
-            pady=6,
-            font=("Microsoft YaHei UI", 12, "bold"),
+        version = tk.Frame(title_left, bg=glass_color(bg, 0.12), highlightbackground=glass_border(bg, 0.20), highlightthickness=1)
+        version.pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(version, text=f"v{APP_VERSION}", bg=glass_color(bg, 0.12), fg=glass_border(bg, 0.60), font=(FONT, 9)).pack(
+            padx=6, pady=2
         )
-        badge_label.pack(anchor=tk.W, padx=18, pady=(18, 0))
-        if badge is self.connection_text:
-            self.connection_badge = badge_label
-        else:
-            self.run_badge = badge_label
-        return card
 
-    def _build_interval_card(self, parent: tk.Frame) -> None:
-        card = tk.Frame(parent, bg=CARD, height=94, highlightbackground=BORDER, highlightthickness=2)
-        card.pack(fill=tk.X, pady=(0, 14))
-        card.pack_propagate(False)
+        dots = tk.Frame(title_bar, bg=top_bg)
+        dots.pack(side=tk.RIGHT, padx=14)
+        for color in ("#ff5f57", "#febc2e", "#28c840"):
+            tk.Label(dots, bg=color, width=2, font=(FONT, 6)).pack(side=tk.LEFT, padx=2)
 
-        top = tk.Frame(card, bg=CARD)
-        top.pack(fill=tk.X, padx=18, pady=(15, 8))
-        tk.Label(top, text="识别间隔", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 11, "bold")).pack(side=tk.LEFT)
-        tk.Label(top, text="推荐 1.0-1.5 秒", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 10)).pack(side=tk.RIGHT)
+        outer = tk.Frame(self, bg=bg)
+        outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(outer, bg=bg, bd=0, highlightthickness=0)
+        scrollbar = tk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        body = tk.Frame(canvas, bg=bg)
+        body_id = canvas.create_window((0, 0), window=body, anchor="nw")
 
-        line = tk.Frame(card, bg=CARD)
-        line.pack(fill=tk.X, padx=18)
-        tk.Label(line, text="0.5s", bg=CARD, fg=SUBTLE, font=("Microsoft YaHei UI", 10)).pack(side=tk.LEFT, padx=(0, 10))
-        tk.Scale(
-            line,
+        def resize_body(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(body_id, width=event.width)
+
+        body.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", resize_body)
+        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+
+        self._build_body(body)
+
+        footer = tk.Frame(self, bg=top_bg, height=32)
+        footer.pack(fill=tk.X, side=tk.BOTTOM)
+        footer.pack_propagate(False)
+        tk.Frame(footer, bg=glass_border(bg, 0.12), height=1).pack(fill=tk.X, side=tk.TOP)
+        tk.Label(footer, text="Designed by 小北", bg=top_bg, fg=glass_border(bg, 0.58), font=(FONT, 9, "bold")).pack(
+            side=tk.LEFT, padx=14
+        )
+        self.loop_lbl = tk.Label(footer, text="循环次数：0", bg=top_bg, fg=glass_border(bg, 0.55), font=(MONO, 9))
+        self.loop_lbl.pack(side=tk.RIGHT, padx=14)
+
+    def _card(self, parent) -> tk.Frame:
+        return tk.Frame(parent, bg=self._gc, highlightbackground=self._gb, highlightthickness=1)
+
+    def _clabel(self, parent, text: str) -> None:
+        tk.Label(parent, text=text, bg=self._gc, fg=glass_border(self._bg, 0.52), font=(FONT, 8, "bold")).pack(
+            anchor=tk.W, padx=12, pady=(9, 3)
+        )
+
+    def _badge(self, parent, text: str, tint_hex: str) -> tk.Frame:
+        tint_bg = alpha_blend(tint_hex, self._gc, 0.22)
+        tint_fg = alpha_blend(tint_hex, "#ffffff", 0.75)
+        tint_bd = alpha_blend(tint_hex, self._gc, 0.42)
+        frame = tk.Frame(parent, bg=tint_bg, highlightbackground=tint_bd, highlightthickness=1)
+        tk.Label(frame, text=text, bg=tint_bg, fg=tint_fg, font=(FONT, 9, "bold")).pack(padx=8, pady=3)
+        return frame
+
+    def _build_body(self, body: tk.Frame) -> None:
+        bg = self._bg
+        gc = self._gc
+        gb = self._gb
+
+        def row2():
+            frame = tk.Frame(body, bg=bg)
+            frame.pack(fill=tk.X, padx=12, pady=(12, 0))
+            frame.columnconfigure(0, weight=1)
+            frame.columnconfigure(1, weight=1)
+            return frame
+
+        row = row2()
+        device_card = self._card(row)
+        device_card.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        self._clabel(device_card, "设备状态")
+        device_row = tk.Frame(device_card, bg=gc)
+        device_row.pack(fill=tk.X, padx=12, pady=(0, 10))
+        tk.Label(device_row, textvariable=self.device_text, bg=gc, fg=glass_border(bg, 0.85), font=(MONO, 10)).pack(side=tk.LEFT)
+        self.conn_badge = self._badge(device_row, "● 检测中", "#5090ff")
+        self.conn_badge.pack(side=tk.RIGHT)
+
+        run_card = self._card(row)
+        run_card.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        self._clabel(run_card, "运行状态")
+        run_row = tk.Frame(run_card, bg=gc)
+        run_row.pack(fill=tk.X, padx=12, pady=(0, 10))
+        tk.Label(run_row, text="识别循环", bg=gc, fg=glass_border(bg, 0.45), font=(FONT, 10)).pack(side=tk.LEFT)
+        self.run_badge = self._badge(run_row, "● 待机中", "#5090ff")
+        self.run_badge.pack(side=tk.RIGHT)
+
+        interval_card = self._card(body)
+        interval_card.pack(fill=tk.X, padx=12, pady=(8, 0))
+        self._clabel(interval_card, "识别间隔")
+        interval_row = tk.Frame(interval_card, bg=gc)
+        interval_row.pack(fill=tk.X, padx=12, pady=(0, 12))
+        tk.Label(interval_row, text="0.5s", bg=gc, fg=glass_border(bg, 0.38), font=(MONO, 9)).pack(side=tk.LEFT)
+        self.iv_scale = tk.Scale(
+            interval_row,
             from_=0.5,
             to=3.0,
             resolution=0.1,
-            variable=self.interval,
             orient=tk.HORIZONTAL,
-            showvalue=False,
-            bg=CARD,
-            troughcolor="#687280",
-            activebackground=PRIMARY,
+            variable=self.interval,
+            bg=gc,
+            fg=glass_border(bg, 0.85),
+            troughcolor=glass_color(bg, 0.20),
             highlightthickness=0,
-            length=660,
-            command=self._on_interval_change,
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(line, text="3.0s", bg=CARD, fg=SUBTLE, font=("Microsoft YaHei UI", 10)).pack(side=tk.LEFT, padx=(10, 14))
-        tk.Label(line, textvariable=self.interval_text, bg=CARD, fg=TEXT, width=5, font=("Consolas", 14, "bold")).pack(side=tk.RIGHT)
-
-    def _build_log_card(self, parent: tk.Frame) -> None:
-        card = tk.Frame(parent, bg=CARD, height=88, highlightbackground=BORDER, highlightthickness=2)
-        card.pack(fill=tk.X, pady=(0, 14))
-        card.pack_propagate(False)
-        tk.Label(card, text="最新日志", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor=tk.W, padx=18, pady=(13, 8))
-        tk.Label(
-            card,
-            textvariable=self.log_text,
-            bg=BLACK_BAR,
-            fg="#9af28f",
-            anchor=tk.W,
-            padx=16,
-            font=("Consolas", 12),
-        ).pack(fill=tk.X, padx=18, ipady=10)
-
-    def _build_actions(self, parent: tk.Frame) -> None:
-        card = tk.Frame(parent, bg=CARD, height=150, highlightbackground=BORDER, highlightthickness=2)
-        card.pack(fill=tk.X, pady=(0, 18))
-        card.pack_propagate(False)
-
-        row1 = tk.Frame(card, bg=CARD)
-        row1.pack(fill=tk.X, padx=18, pady=(18, 8))
-        self._button(row1, "刷新设备", self.refresh_devices, BUTTON, BUTTON_HOVER).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self._button(row1, "自动检测", self.auto_config, BUTTON, BUTTON_HOVER).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self._button(row1, "实时预览", self.open_preview, BUTTON, BUTTON_HOVER).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        row2 = tk.Frame(card, bg=CARD)
-        row2.pack(fill=tk.X, padx=18, pady=(6, 0))
-        self._button(row2, "开始循环", self.start_loop, PRIMARY, PRIMARY_DARK).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self._button(row2, "停止", self.stop_loop, DANGER, DANGER_DARK).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-    def _build_footer(self, parent: tk.Frame) -> None:
-        tk.Frame(parent, bg="#606a78", height=1).pack(fill=tk.X, pady=(0, 14))
-        footer = tk.Frame(parent, bg=PANEL)
-        footer.pack(fill=tk.X)
-        tk.Label(footer, text="主题调色", bg=PANEL, fg=MUTED, font=("Microsoft YaHei UI", 10, "bold")).pack(side=tk.LEFT)
-        dots = tk.Frame(footer, bg=PANEL)
-        dots.pack(side=tk.LEFT, padx=16)
-        for color in ("#102449", "#111827", "#042f2e", "#4c0519", "#78350f", "#e5e7eb"):
-            tk.Label(dots, text="●", bg=PANEL, fg=color, font=("Microsoft YaHei UI", 21)).pack(side=tk.LEFT, padx=5)
-        tk.Label(footer, text="Designed by 小北", bg=PANEL, fg="#d1d5db", font=("Microsoft YaHei UI", 10, "bold")).pack(side=tk.RIGHT)
-
-    def _button(self, parent: tk.Frame, text: str, command, bg: str, active_bg: str) -> tk.Button:
-        btn = tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg=bg,
-            fg=TEXT,
-            activebackground=active_bg,
-            activeforeground=TEXT,
-            relief=tk.FLAT,
             bd=0,
-            height=2,
-            cursor="hand2",
-            font=("Microsoft YaHei UI", 12, "bold"),
+            sliderrelief=tk.FLAT,
+            activebackground="#ffffff",
+            showvalue=False,
+            length=250,
         )
-        btn.bind("<Enter>", lambda _e: btn.configure(bg=active_bg))
-        btn.bind("<Leave>", lambda _e: btn.configure(bg=bg))
-        return btn
+        self.iv_scale.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
+        tk.Label(interval_row, text="3.0s", bg=gc, fg=glass_border(bg, 0.38), font=(MONO, 9)).pack(side=tk.LEFT)
+        self.iv_lbl = tk.Label(interval_row, text=f"{self.interval.get():.1f}s", bg=gc, fg=glass_border(bg, 0.90), font=(MONO, 12, "bold"), width=5)
+        self.iv_lbl.pack(side=tk.LEFT, padx=(8, 0))
+        self.interval.trace_add("write", lambda *_: self.iv_lbl.configure(text=f"{self.interval.get():.1f}s"))
 
-    def _on_interval_change(self, value: str) -> None:
-        self.interval_text.set(f"{float(value):.1f}s")
+        log_card = self._card(body)
+        log_card.pack(fill=tk.X, padx=12, pady=(8, 0))
+        self._clabel(log_card, "最新日志")
+        log_bg = alpha_blend("#000000", bg, 0.25)
+        log_box = tk.Frame(log_card, bg=log_bg, highlightbackground=glass_border(bg, 0.12), highlightthickness=1)
+        log_box.pack(fill=tk.X, padx=12, pady=(0, 10))
+        self.log_time_lbl = tk.Label(log_box, text="--:--:--", bg=log_bg, fg=glass_border(bg, 0.38), font=(MONO, 10))
+        self.log_time_lbl.pack(side=tk.LEFT, padx=(10, 0), pady=7)
+        tk.Label(log_box, textvariable=self.log_text, bg=log_bg, fg=alpha_blend("#b4ff8c", "#ffffff", 0.85), font=(MONO, 10), anchor=tk.W).pack(
+            side=tk.LEFT, padx=(8, 10), fill=tk.X, expand=True
+        )
 
-    def _set_connection(self, text: str, ok: bool) -> None:
-        self.connection_text.set(text)
-        if hasattr(self, "connection_badge"):
-            self.connection_badge.configure(bg=GREEN_DARK if ok else "#6b1f2a", fg="#a7f3d0" if ok else "#fecaca")
+        button_card = self._card(body)
+        button_card.pack(fill=tk.X, padx=12, pady=(8, 0))
+        button_inner = tk.Frame(button_card, bg=gc)
+        button_inner.pack(fill=tk.X, padx=10, pady=10)
 
-    def _set_running(self, text: str, running: bool) -> None:
-        self.run_state_text.set(text)
-        if hasattr(self, "run_badge"):
-            self.run_badge.configure(bg=GREEN_DARK if running else "#4b5563", fg="#a7f3d0" if running else "#d1d5db")
+        row3 = tk.Frame(button_inner, bg=gc)
+        row3.pack(fill=tk.X, pady=(0, 6))
+        row3.columnconfigure((0, 1, 2), weight=1)
+        ghost_bg = glass_color(bg, 0.14)
+        ghost_hover = glass_color(bg, 0.22)
+        dark_btn(row3, "刷新设备", self.refresh_devices, ghost_bg, glass_border(bg, 0.75), ghost_hover, 10).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        dark_btn(row3, "自动检测", self.auto_config, alpha_blend("#3c8cff", bg, 0.32), glass_border("#a0c8ff", 0.90), alpha_blend("#3c8cff", bg, 0.44), 10).grid(row=0, column=1, sticky="ew", padx=2)
+        dark_btn(row3, "实时预览", self.open_preview, ghost_bg, glass_border(bg, 0.75), ghost_hover, 10).grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
-    def open_preview(self) -> None:
-        if self.preview_window and self.preview_window.winfo_exists():
-            self.preview_window.lift()
-            return
-        self.preview_window = PreviewWindow(self)
-        self.preview_stop_event.clear()
-        self._start_preview_worker()
-        if self.latest_image is not None:
-            self.preview_window.show_image(self.latest_image)
+        row_buttons = tk.Frame(button_inner, bg=gc)
+        row_buttons.pack(fill=tk.X)
+        row_buttons.columnconfigure((0, 1), weight=1)
+        self.start_btn = dark_btn(row_buttons, "▷  开始循环", self.start_loop, alpha_blend("#28b464", bg, 0.38), alpha_blend("#b4ffd0", "#ffffff", 0.95), alpha_blend("#28b464", bg, 0.50), 14)
+        self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        dark_btn(row_buttons, "□  停止", self.stop_loop, alpha_blend("#dc3c3c", bg, 0.26), alpha_blend("#ffb4b4", "#ffffff", 0.90), alpha_blend("#dc3c3c", bg, 0.38), 14).grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
-    def close_preview(self) -> None:
-        self.preview_stop_event.set()
-        if self.preview_window and self.preview_window.winfo_exists():
-            self.preview_window.destroy()
-        self.preview_window = None
+        separator = tk.Frame(body, bg=glass_border(bg, 0.12), height=1)
+        separator.pack(fill=tk.X, padx=12, pady=(10, 0))
 
-    def _start_preview_worker(self) -> None:
-        if self.preview_worker and self.preview_worker.is_alive():
-            return
+        theme_card = self._card(body)
+        theme_card.pack(fill=tk.X, padx=12, pady=(0, 12))
+        self._clabel(theme_card, "主题调色")
+        swatch_row = tk.Frame(theme_card, bg=gc)
+        swatch_row.pack(fill=tk.X, padx=12, pady=(0, 8))
+        self._preset_btns = []
+        for preset in PRESETS:
+            swatch_bg = alpha_blend(preset["c1"], preset["bg"], 0.55)
+            border = "#ffffff" if self.theme.get("name") == preset["name"] else glass_border(bg, 0.22)
+            btn = tk.Label(swatch_row, text=preset["name"], bg=swatch_bg, fg="#ffffff", font=(FONT, 9, "bold"), padx=8, pady=4, cursor="hand2", highlightbackground=border, highlightthickness=2)
+            btn.pack(side=tk.LEFT, padx=(0, 5))
+            btn.bind("<Button-1>", lambda _e, p=preset, b=btn: self._pick_preset(p, b))
+            self._preset_btns.append((preset["name"], btn))
 
-        def run():
-            while not self.preview_stop_event.is_set():
-                try:
-                    image = self.adb.screencap()
-                    self.events.put(("preview", image))
-                except Exception as exc:  # noqa: BLE001
-                    self.events.put(("log", f"[preview error] {exc}"))
-                    time.sleep(2.0)
-                time.sleep(max(0.6, float(self.interval.get())))
+    def _pick_preset(self, preset: dict, clicked_btn: tk.Label) -> None:
+        for _name, btn in self._preset_btns:
+            btn.configure(highlightbackground=glass_border(self._bg, 0.22))
+        clicked_btn.configure(highlightbackground="#ffffff")
+        theme = dict(preset)
+        save_theme(theme)
+        self._apply_theme(theme, rebuild=True)
 
-        self.preview_worker = threading.Thread(target=run, daemon=True)
-        self.preview_worker.start()
+    def log_line(self, text: str) -> None:
+        self.events.put(("log", text))
+
+    def set_status(self, text: str) -> None:
+        self.events.put(("status", text))
+
+    def _set_badge(self, badge_frame, text: str, tint_hex: str) -> None:
+        tint_bg = alpha_blend(tint_hex, self._gc, 0.22)
+        tint_fg = alpha_blend(tint_hex, "#ffffff", 0.75)
+        tint_bd = alpha_blend(tint_hex, self._gc, 0.42)
+        badge_frame.configure(bg=tint_bg, highlightbackground=tint_bd)
+        badge_frame.winfo_children()[0].configure(text=text, bg=tint_bg, fg=tint_fg)
 
     def _drain_events(self) -> None:
         while True:
             try:
-                typ, payload = self.events.get_nowait()
+                kind, payload = self.events.get_nowait()
             except queue.Empty:
                 break
-            if typ == "status":
-                text = str(payload)
-                running = "运行" in text
-                self._set_running("运行中" if running else text, running)
-            elif typ == "device":
-                self.device_text.set(str(payload))
-            elif typ == "connection":
-                ok, text = payload
-                self._set_connection(str(text), bool(ok))
-            elif typ == "display":
-                self.display_text.set(f"Display {payload}")
-            elif typ == "log":
-                friendly = friendly_log_text(str(payload))
-                self.log_text.set(f"{time.strftime('%H:%M:%S')}  {friendly}")
-            elif typ == "preview":
+            if kind == "log":
+                self.log_time_lbl.configure(text=time.strftime("%H:%M:%S"))
+                self.log_text.set(friendly_log_text(str(payload)))
+            elif kind == "status":
+                status = str(payload)
+                if status == "循环运行中":
+                    self._set_badge(self.run_badge, "● 运行中", "#7cdc3c")
+                    self.start_btn.configure(state=tk.DISABLED)
+                else:
+                    self._set_badge(self.run_badge, "● 待机中", "#5090ff")
+                    self.start_btn.configure(state=tk.NORMAL)
+            elif kind == "device":
+                value = str(payload)
+                connected = value.endswith(" 已连接")
+                self.device_text.set(value.replace(" 已连接", ""))
+                self._set_badge(self.conn_badge, "● 已连接" if connected else "● 未连接", "#28c864" if connected else "#dc3c3c")
+            elif kind == "preview":
                 self.latest_image = payload
                 if self.preview_window and self.preview_window.winfo_exists():
                     self.preview_window.show_image(payload)
+            elif kind == "loop_count":
+                self.loop_count += 1
+                self.loop_lbl.configure(text=f"循环次数：{self.loop_count}")
         self.after(120, self._drain_events)
 
-    def _run_bg(self, name: str, target) -> None:
-        def wrapped():
-            self.events.put(("status", f"{name}中"))
-            try:
-                target()
-            except Exception as exc:  # noqa: BLE001
-                self.events.put(("log", f"[error] {exc}"))
-                self.events.put(("status", "出错"))
-                self.events.put(("connection", (False, "未连接")))
-            else:
-                if not (self.worker and self.worker.is_alive()):
-                    self.events.put(("status", "待命"))
+    def _run_bg(self, name: str, func) -> None:
+        if self.worker and self.worker.is_alive():
+            messagebox.showinfo("正在运行", "已有任务正在运行，请先停止或等待完成。")
+            return
+        self.stop_event.clear()
 
-        threading.Thread(target=wrapped, daemon=True).start()
+        def wrapped():
+            self.set_status(name)
+            try:
+                func()
+            except Exception as exc:  # noqa: BLE001
+                self.log_line(f"[error] {exc}")
+            finally:
+                self.set_status("就绪")
+
+        self.worker = threading.Thread(target=wrapped, daemon=True)
+        self.worker.start()
 
     def refresh_devices(self) -> None:
         def task():
             self.reload_config()
-            with LogCapture(self.log_line):
-                devices = self.adb.devices()
-            connected = [line.split()[0] for line in devices.splitlines() if "\tdevice" in line]
-            if connected:
-                device = self.cfg.get("device") or connected[0]
-                if device not in connected:
-                    device = connected[0]
-                self.events.put(("device", device))
-                self.events.put(("connection", (True, "已连接")))
-            else:
-                self.events.put(("device", "未检测"))
-                self.events.put(("connection", (False, "未连接")))
-                self.events.put(("log", "[error] no connected ADB device found"))
+            adb_path = wz_auto.resolve_adb_path(self.cfg.get("adb_path"))
+            devices = wz_auto.ensure_connected_devices(adb_path, self.cfg.get("device"))
+            configured = str(self.cfg.get("device") or "")
+            device = configured if configured in devices else (devices[0] if devices else configured)
+            if device and device != configured:
+                wz_auto.update_config_file(CONFIG_PATH, {"device": device})
+                self.reload_config()
+                self.log_line(f"[auto] device={device}")
+            self.events.put(("device", f"{device} 已连接" if device in devices else "未确认连接"))
+            self.log_line("[device] refresh done")
 
-        self._run_bg("刷新设备", task)
+        self._run_bg("刷新设备中", task)
 
     def auto_config(self) -> None:
         def task():
-            with LogCapture(self.log_line):
-                print("[auto] start detect emulator and display")
-                cfg = wz_auto.load_config(CONFIG_PATH)
-                adb_path = wz_auto.resolve_adb_path(cfg.get("adb_path"))
-                client = wz_auto.AdbClient(adb_path, cfg.get("device") or "127.0.0.1:5555", str(cfg.get("display") or "2"))
-                devices_text = client.devices()
-                devices = [line.split()[0] for line in devices_text.splitlines() if "\tdevice" in line]
-                if not devices:
-                    ports = wz_auto.scan_local_adb_ports()
-                    for port in ports:
-                        candidate = f"127.0.0.1:{port}"
-                        try:
-                            wz_auto.run_adb(adb_path, ["connect", candidate])
-                        except Exception:
-                            pass
-                    devices_text = client.devices()
-                    devices = [line.split()[0] for line in devices_text.splitlines() if "\tdevice" in line]
-                if not devices:
-                    raise RuntimeError("no connected ADB device found")
-                device = devices[0]
-                client = wz_auto.AdbClient(adb_path, device, str(cfg.get("display") or "2"))
-                display, score = wz_auto.detect_display(client)
-                cfg["adb_path"] = str(adb_path)
-                cfg["device"] = device
-                cfg["display"] = str(display)
-                wz_auto.save_config(CONFIG_PATH, cfg)
-                print(f"[auto] adb_path={adb_path}")
-                print(f"[auto] device={device}")
-                print(f"[auto] display={display} score={score:.3f}")
             self.reload_config()
-            self.events.put(("device", self.cfg.get("device") or "未检测"))
-            self.events.put(("connection", (True, "已连接")))
-            self.events.put(("display", self.cfg.get("display") or "自动"))
+            result = wz_auto.auto_detect_config(self.cfg)
+            wz_auto.update_config_file(
+                CONFIG_PATH,
+                {"adb_path": result["adb_path"], "device": result["device"], "display": result["display"]},
+            )
+            self.reload_config()
+            self.events.put(("preview", result["image"]))
+            self.events.put(("device", f"{result['device']} 已连接"))
+            self.log_line(f"[auto] display={result['display']} score={result['display_score']:.3f}")
 
-        self._run_bg("自动检测", task)
+        self._run_bg("自动检测中", task)
 
     def start_loop(self) -> None:
-        if self.worker and self.worker.is_alive():
-            messagebox.showinfo("提示", "循环已经在运行")
-            return
-
-        self.cfg["interval"] = float(self.interval.get())
-        wz_auto.save_config(CONFIG_PATH, self.cfg)
-        self.reload_config()
-        self.stop_event.clear()
-
-        def run():
-            self.events.put(("status", "循环运行中"))
+        def task():
+            self.reload_config()
+            self.cfg["interval"] = float(self.interval.get())
+            wz_auto.update_config_file(CONFIG_PATH, {"interval": float(self.interval.get())})
             try:
-                with LogCapture(self.log_line):
-                    wz_auto.loop(self.adb, self.cfg, self.stop_event)
+                result = wz_auto.auto_detect_config(self.cfg)
+                wz_auto.update_config_file(
+                    CONFIG_PATH,
+                    {"adb_path": result["adb_path"], "device": result["device"], "display": result["display"]},
+                )
+                self.reload_config()
+                self.events.put(("preview", result["image"]))
+                self.events.put(("device", f"{result['device']} 已连接"))
+                self.log_line(f"[auto] device={result['device']} display={result['display']}")
             except Exception as exc:  # noqa: BLE001
-                self.events.put(("log", f"[error] {exc}"))
-                self.events.put(("status", "出错"))
-            finally:
-                self.events.put(("status", "待命"))
+                self.log_line(f"[auto warning] {exc}")
+            self.log_line("[loop] start enable_clicks=True")
+            while not self.stop_event.is_set():
+                img = self.adb.capture()
+                self.events.put(("preview", img))
+                match_result = wz_auto.find_state(img, self.cfg.get("states", []), verbose=False)
+                if match_result:
+                    with LogCapture(self.log_line):
+                        wz_auto.perform_action(self.adb, img, match_result, dry_run=False)
+                    self.events.put(("loop_count", None))
+                    time.sleep(match_result.delay_after)
+                else:
+                    self.log_line("[wait] no configured state matched")
+                    time.sleep(max(0.3, float(self.interval.get())))
+            self.log_line("[loop] stopped")
 
-        self.worker = threading.Thread(target=run, daemon=True)
-        self.worker.start()
+        self._run_bg("循环运行中", task)
 
     def stop_loop(self) -> None:
         self.stop_event.set()
         self.log_line("[stop] stop requested")
-        self.events.put(("status", "待命"))
 
-    def log_line(self, text: str) -> None:
-        self.events.put(("log", text))
+    def open_preview(self) -> None:
+        if self.preview_window is None or not self.preview_window.winfo_exists():
+            self.preview_window = PreviewWindow(self)
+        self.preview_window.deiconify()
+        self.preview_window.lift()
+        if self.latest_image is not None:
+            self.preview_window.show_image(self.latest_image)
+        self._start_preview_worker()
+
+    def close_preview(self) -> None:
+        self.preview_stop_event.set()
+        if self.preview_window and self.preview_window.winfo_exists():
+            self.preview_window.withdraw()
+
+    def _start_preview_worker(self) -> None:
+        if self.preview_worker and self.preview_worker.is_alive():
+            return
+        self.preview_stop_event.clear()
+
+        def worker():
+            while not self.preview_stop_event.is_set():
+                try:
+                    if not (self.worker and self.worker.is_alive()):
+                        self.reload_config()
+                        img = self.adb.capture()
+                        self.events.put(("preview", img))
+                except Exception as exc:  # noqa: BLE001
+                    self.log_line(f"[preview error] {exc}")
+                time.sleep(max(0.5, float(self.interval.get())))
+
+        self.preview_worker = threading.Thread(target=worker, daemon=True)
+        self.preview_worker.start()
 
 
 if __name__ == "__main__":
